@@ -1,5 +1,5 @@
 pool:
-  vmImage: "ubuntu"
+  vmImage: "ubuntu-latest"
 
 stages:
   - stage: GetCertificate
@@ -19,7 +19,3 @@ stages:
           - task: PythonScript@0
             inputs:
               script: python3 acme_tiny.py --private-key private_key.json --regr regr.json --csr csr.der > certificate_chain.pem
-              
-
-
-
