@@ -1,6 +1,10 @@
 pool:
   vmImage: "ubuntu-latest"
 
+variables:
+  - name: cn
+    value: $(CSR_COMMON_NAME)
+
 stages:
   - stage: GetCertificate
     jobs:
@@ -11,11 +15,9 @@ stages:
               script: pip3 install -r requirements.txt
           - task: PythonScript@0
             inputs:
-              script: python3 generate_csr.py > csr.der
-            env:
-              CSR_COMMON_NAME: $(CSR_COMMON_NAME)
+              script: python3 generate_csr.py --common-name ${{ variables.cn }}
       - job: RunACMEClient
         steps:
           - task: PythonScript@0
             inputs:
-              script: python3 acme_tiny.py --private-key private_key.json --regr regr.json --csr csr.der > certificate_chain.pem
+              script: python3 acme_tiny.py --private-key private_key.json --regr regr.json > certificate_chain.pem
