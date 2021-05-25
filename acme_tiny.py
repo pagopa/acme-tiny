@@ -1,17 +1,49 @@
 #!/usr/bin/env python
 # Copyright Daniel Roesler, under MIT license, see LICENSE at github.com/diafygi/acme-tiny
-import argparse, base64, hashlib, json, logging, re, sys, textwrap, time
+import argparse, base64, hashlib, json, logging, os, re, sys, textwrap, time
 from urllib.request import urlopen, Request
 import cryptography, jwcrypto.jwk
+import azure.mgmt.dns, azure.identity
 
 DEFAULT_DIRECTORY_URL = "https://acme-staging-v02.api.letsencrypt.org/directory"
+DEFAULT_DNS_TTL_SEC = 300
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
-def get_crt(private_key, regr, csr, log=LOGGER, directory_url=DEFAULT_DIRECTORY_URL):
-    directory, alg, jwk = None, None, None # global variables
+def update_azure_dns(subscription, resource_group, zone, domain, value):
+
+    log = LOGGER
+    # helper function - get a DNS API client
+    def _get_dns_client(subscription):
+        identity = azure.identity.EnvironmentCredential()
+        return azure.mgmt.dns.DnsManagementClient(identity, subscription)
+
+    # helper function - remove zone name from domain string
+    def _get_name(domain, zone):
+        name = "_acme-challenge.{}".format(domain[:domain.rfind(zone)])
+        log.info("Updating TXT record on %s in %s zone", name, zone)
+        return name
+    
+    client = _get_dns_client(subscription)
+    log.info("Azure DNS client initialized")
+    client.record_sets.create_or_update(
+        resource_group,
+        zone,
+        _get_name(domain, zone),
+        "TXT",
+        {
+            "ttl": DEFAULT_DNS_TTL_SEC,
+            "TXTRecords": [{"value": value}]
+        }
+    )
+    log.info("TXT record updated")
+
+def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
+    
+    log = LOGGER
+    directory, alg = None, None # global variable
 
     # helper function - base64 encode for jose spec
     def _b64(b):
@@ -133,8 +165,13 @@ def get_crt(private_key, regr, csr, log=LOGGER, directory_url=DEFAULT_DIRECTORY_
         txt_record_value = _b64(hashlib.sha256("{}.{}".format(token, thumbprint).encode("utf-8")).digest())
         log.info("Set TXT record on _acme-challenge.%s to %s", domain, txt_record_value)
 
-        # TODO update automatically with Azure Service Principal
-        input("Press any key to continue when the challenge has been propagated:")
+        try:
+            subscription = os.environ["AZURE_SUBSCRIPTION_ID"]
+            resource_group = os.environ("AZURE_DNS_ZONE_RESOURCE_GROUP")
+            zone = os.environ("AZURE_DNS_ZONE")
+        except KeyError as ex:
+            raise KeyError("{} environment variable not set".format(ex.args[0]))
+        update_azure_dns(subscription, resource_group, zone, domain, txt_record_value)
 
         # say the challenge is done
         _send_signed_request(challenge['url'], {}, "Error submitting challenges: {}".format(domain))
@@ -177,7 +214,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    signed_crt = get_crt(args.private_key, args.regr, args.csr, log=LOGGER, directory_url=args.directory_url)
+    signed_crt = get_crt(args.private_key, args.regr, args.csr, directory_url=args.directory_url)
     sys.stdout.write(signed_crt)
 
 if __name__ == "__main__": # pragma: no cover
