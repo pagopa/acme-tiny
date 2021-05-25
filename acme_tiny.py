@@ -208,7 +208,7 @@ def main(argv=None):
     )
     parser.add_argument("--private-key", required=True, help="Path to your Let's Encrypt account private key")
     parser.add_argument("--regr", required=True, help="Path to your Let's Encrypt account registration info")
-    parser.add_argument("--csr", required=True, help="Path to your certificate signing request")
+    parser.add_argument("--csr", default="csr.der", help="Path to your certificate signing request")
     parser.add_argument("--quiet", action="store_const", const=logging.ERROR, help="Suppress output except for errors")
     parser.add_argument("--directory-url", default=DEFAULT_DIRECTORY_URL, help="Certificate authority directory url, default is Let's Encrypt")
 
