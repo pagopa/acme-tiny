@@ -1,0 +1,11 @@
+stages:
+  - stage: HelloWorld
+    dependsOn: []
+    jobs:
+      - job: hello_world
+        steps:
+          - checkout: self
+            displayName: 'Checkout'
+          - script: |
+              echo "Hello World!"
+            displayName: 'hello'
