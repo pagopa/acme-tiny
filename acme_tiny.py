@@ -1,10 +1,23 @@
 #!/usr/bin/env python
 # Copyright Daniel Roesler, under MIT license, see LICENSE at github.com/diafygi/acme-tiny
-import argparse, base64, hashlib, json, logging, os, re, sys, textwrap, time
-from urllib.request import urlopen, Request
-import cryptography, jwcrypto.jwk
-import azure.mgmt.dns, azure.identity
 
+import argparse
+import base64
+import hashlib
+import json
+import logging
+import os
+import re
+import sys
+import textwrap
+import time
+from urllib.request import urlopen, Request
+import cryptography
+import jwcrypto.jwk
+import azure.mgmt.dns
+import azure.identity
+
+# FIXME do not use staging in final release of code
 DEFAULT_DIRECTORY_URL = "https://acme-staging-v02.api.letsencrypt.org/directory"
 DEFAULT_DNS_TTL_SEC = 300
 
@@ -12,20 +25,27 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
+
 def update_azure_dns(subscription, resource_group, zone, domain, value):
 
     log = LOGGER
     # helper function - get a DNS API client
     def _get_dns_client(subscription):
-        identity = azure.identity.EnvironmentCredential()
+        identity = azure.identity.ClientSecretCredential(
+            client_id = os.environ["AZURE_CLIENT_ID"],
+            client_secret = os.environ["AZURE_CLIENT_SECRET"],
+            tenant_id = os.environ["AZURE_TENANT_ID"]
+        )
         return azure.mgmt.dns.DnsManagementClient(identity, subscription)
 
     # helper function - remove zone name from domain string
     def _get_name(domain, zone):
-        name = "_acme-challenge.{}".format(domain[:domain.rfind(zone)])
+        if domain.rfind(".{}".format(zone)) != -1:
+            domain = domain[:domain.rfind(".{}".format(zone))]
+        name = "_acme-challenge.{}".format(domain)
         log.info("Updating TXT record on %s in %s zone", name, zone)
         return name
-    
+
     client = _get_dns_client(subscription)
     log.info("Azure DNS client initialized")
     client.record_sets.create_or_update(
@@ -35,15 +55,16 @@ def update_azure_dns(subscription, resource_group, zone, domain, value):
         "TXT",
         {
             "ttl": DEFAULT_DNS_TTL_SEC,
-            "TXTRecords": [{"value": value}]
+            "records": [{"value": value}]
         }
     )
-    log.info("TXT record updated")
+    log.info("TXT record updated!")
 
-def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
-    
+
+def get_crt(private_key, regr, csr, directory_url, out):
+
     log = LOGGER
-    directory, alg = None, None # global variable
+    directory, alg = None, None # global variables
 
     # helper function - base64 encode for jose spec
     def _b64(b):
@@ -102,6 +123,7 @@ def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
             result, _, _ = _send_signed_request(url, None, err_msg)
         return result
 
+    # read private_key.json file
     log.info("Parsing private_key.json...")
     with open(private_key, "r") as f:
         jwk = jwcrypto.jwk.JWK.from_json(f.read())
@@ -119,12 +141,14 @@ def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
         log.error("Unknown key type")
         return None
 
+    # read regr.json file
     log.info("Parsing regr.json...")
     with open(regr, "r") as f:
         kid = json.loads(f.read())["uri"]
     log.info("Account kid: %s", kid)
 
-    log.info("Parsing CSR...")
+    # read the csr file
+    log.info("Parsing csr...")
     with open(csr, "rb") as f:
         csr_raw = f.read()
     try:
@@ -132,16 +156,21 @@ def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
     except ValueError:
         log.error("Unable to parse CSR in DER format.")
         return None
+
+    # read the CN and SAN fields from the CSR - ASSUMPTION: just one field for CN -> [0]
     common_name = [csr_der.subject.get_attributes_for_oid(cryptography.x509.OID_COMMON_NAME)[0].value.strip()]
+    log.info("Found CN domain: %s", common_name)
     try:
-        subject_alternative_names = map(
-            lambda x: x.value.strip(),
-            csr_der.extensions.get_extension_for_oid(cryptography.x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-        )
+        subject_alternative_names = list(map(
+            lambda x: x.value,
+            csr_der.extensions.get_extension_for_oid(cryptography.x509.OID_SUBJECT_ALTERNATIVE_NAME).value
+        ))
     except cryptography.x509.extensions.ExtensionNotFound:
         subject_alternative_names = []
+    log.info("Found SAN domains: %s", subject_alternative_names)
+    # get the union of this set
     domains = list(set().union(subject_alternative_names, common_name))
-    log.info("Found domains: %s", ", ".join(domains))
+    log.info("Domains to validate: %s", ", ".join(domains))
 
     log.info("Getting directory...")
     directory, _, _ = _do_request(directory_url, err_msg="Error getting directory")
@@ -165,15 +194,13 @@ def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
         txt_record_value = _b64(hashlib.sha256("{}.{}".format(token, thumbprint).encode("utf-8")).digest())
         log.info("Set TXT record on _acme-challenge.%s to %s", domain, txt_record_value)
 
-        try:
-            subscription = os.environ["AZURE_SUBSCRIPTION_ID"]
-            resource_group = os.environ("AZURE_DNS_ZONE_RESOURCE_GROUP")
-            zone = os.environ("AZURE_DNS_ZONE")
-        except KeyError as ex:
-            raise KeyError("{} environment variable not set".format(ex.args[0]))
+        subscription = os.environ["AZURE_SUBSCRIPTION_ID"]
+        resource_group = os.environ["AZURE_DNS_ZONE_RESOURCE_GROUP"]
+        zone = os.environ["AZURE_DNS_ZONE"]
+
         update_azure_dns(subscription, resource_group, zone, domain, txt_record_value)
 
-        # say the challenge is done
+        # check until the challenge is done
         _send_signed_request(challenge['url'], {}, "Error submitting challenges: {}".format(domain))
         authorization = _poll_until_not(auth_url, ["pending"], "Error checking challenge status for {}".format(domain))
         if authorization['status'] != "valid":
@@ -192,7 +219,11 @@ def get_crt(private_key, regr, csr, directory_url=DEFAULT_DIRECTORY_URL):
     # download the certificate
     certificate_pem, _, _ = _send_signed_request(order['certificate'], None, "Certificate download failed")
     log.info("Certificate signed!")
-    return certificate_pem
+    
+    with open(out, "wb") as f:
+        f.write(bytes(certificate_pem, "utf-8"))
+    log.info("Certificate bundle saved to %s", out)
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
@@ -200,22 +231,33 @@ def main(argv=None):
         description=textwrap.dedent("""\
             This script automates the process of getting a signed TLS certificate from Let's Encrypt using
             the ACME protocol. It is intented to be run in a Azure DevOps pipeline and have access to your private
-            account key, so PLEASE READ THROUGH IT! It's only ~200 lines, so it won't take long.
+            account key, so PLEASE READ THROUGH IT! It's only ~250 lines, so it won't take long.
 
             Example Usage:
-            python acme_tiny.py --private-key ./private_key.json --regr ./regr.json --csr ./domain.csr.der > signed_chain.crt
+            python acme_tiny.py --private-key ./private_key.json --regr ./regr.json --csr ./domain.csr.der --out signed_chain.crt
             """)
     )
-    parser.add_argument("--private-key", required=True, help="Path to your Let's Encrypt account private key")
-    parser.add_argument("--regr", required=True, help="Path to your Let's Encrypt account registration info")
+    parser.add_argument("--private-key", default="private_key.json", help="Path to your Let's Encrypt account private key")
+    parser.add_argument("--regr", default="regr.json", help="Path to your Let's Encrypt account registration info")
     parser.add_argument("--csr", default="csr.der", help="Path to your certificate signing request")
     parser.add_argument("--quiet", action="store_const", const=logging.ERROR, help="Suppress output except for errors")
     parser.add_argument("--directory-url", default=DEFAULT_DIRECTORY_URL, help="Certificate authority directory url, default is Let's Encrypt")
+    parser.add_argument("--out", default="certificate_chain.pem", help="Destination path of the certificate")
 
     args = parser.parse_args(argv)
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    signed_crt = get_crt(args.private_key, args.regr, args.csr, directory_url=args.directory_url)
-    sys.stdout.write(signed_crt)
+
+    # check that all needed env variables are set, bail out early raising an exception otherwise
+    os.environ["AZURE_SUBSCRIPTION_ID"]
+    os.environ["AZURE_DNS_ZONE_RESOURCE_GROUP"]
+    os.environ["AZURE_DNS_ZONE"]
+    os.environ["AZURE_CLIENT_ID"]
+    os.environ["AZURE_CLIENT_SECRET"]
+    os.environ["AZURE_TENANT_ID"]
+
+    # main function
+    get_crt(args.private_key, args.regr, args.csr, args.directory_url, args.out)
+
 
 if __name__ == "__main__": # pragma: no cover
     main(sys.argv[1:])

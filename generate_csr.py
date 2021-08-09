@@ -1,16 +1,26 @@
-import argparse, logging, os, textwrap, sys
-import cryptography.hazmat.primitives.asymmetric.rsa
+#!/usr/bin/env python
+
+import argparse
+import logging
+import textwrap
+import sys
+import cryptography.hazmat.primitives
+import cryptography.x509
+
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
+
 def get_csr(common_name, out, keyout, rsa_key_size):
 
     log = LOGGER
-    # generate private_key
+
+    # generate private_key, RSA type
+    # TODO support ECDSA type of certificates
     private_key = cryptography.hazmat.primitives.asymmetric.rsa.generate_private_key(
-        public_exponent=65537, # this is RSA e exponent. DO NOT CHANGE!
+        public_exponent=65537, # this is RSA e exponent. DO NOT CHANGE THIS VALUE!
         key_size = rsa_key_size
     )
     # save private_key
@@ -24,36 +34,50 @@ def get_csr(common_name, out, keyout, rsa_key_size):
         )
     log.info("Private key saved to %s", keyout)
 
-    # build CSR
+    # CSR creation
     builder = cryptography.x509.CertificateSigningRequestBuilder()
+    # set Common Name
     builder = builder.subject_name(cryptography.x509.Name(
-        [cryptography.x509.NameAttribute(cryptography.x509.oid.NameOID.COMMON_NAME, common_name)] # set Common Name
+        [cryptography.x509.NameAttribute(cryptography.x509.oid.NameOID.COMMON_NAME, common_name)]
     ))
-    builder = builder.add_extension(cryptography.x509.BasicConstraints(ca=False, path_length=None), critical=True) # set Basic Const.
+    # set Basic Constraints
+    builder = builder.add_extension(cryptography.x509.BasicConstraints(ca=False, path_length=None), critical=True)
+    # set Key Usage
     builder = builder.add_extension(cryptography.x509.KeyUsage(
-            digital_signature=True, key_encipherment=True, content_commitment=False,
-            data_encipherment=False, key_agreement=False, key_cert_sign=False, crl_sign=False,
-            encipher_only=False, decipher_only=False), # set Extended Key Usage
-        critical=True)
+        digital_signature=True, key_encipherment=True, content_commitment=False,
+        data_encipherment=False, key_agreement=False, key_cert_sign=False, crl_sign=False,
+        encipher_only=False, decipher_only=False),
+        critical=True
+    )
+    # set Extended Key Usage
     builder = builder.add_extension(
-            cryptography.x509.ExtendedKeyUsage([cryptography.x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), # set Extended Key Usage
-        critical=False)
+        cryptography.x509.ExtendedKeyUsage([cryptography.x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),
+        critical=False
+    )
+    # set Common Name in SAN field too
+    builder = builder.add_extension(
+        cryptography.x509.SubjectAlternativeName([cryptography.x509.DNSName(common_name)]),
+        critical=False
+    )
+    # sign the CSR with private key
     csr = builder.sign(private_key, cryptography.hazmat.primitives.hashes.SHA256())
-    # save CSR
+
+    # save CSR to file
     with open(out, "wb") as f:
         f.write(
             csr.public_bytes(encoding=cryptography.hazmat.primitives.serialization.Encoding.DER)
         )
     log.info("CSR saved to %s", out)
 
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent("""\
-            This script generates a CSR in DER format, expecting the needed values in environment variables.
+            This script generates a CSR in DER format.
 
             Example Usage:
-            python generate_csr.py --common-name example.com
+            python generate_csr.py --common-name example.com --keyout csr.key --out csr.der --rsa-key-size 2048
             """)
     )
     parser.add_argument("--common-name", required=True, help="X509 Common Name string")
@@ -64,8 +88,9 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    # TODO add support for SAN field
+    # TODO add support for arbitrary SAN fields
     get_csr(args.common_name, args.out, args.keyout, args.rsa_key_size)
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])

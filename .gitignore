@@ -7,3 +7,7 @@ __pycache__/
 
 # Static files
 static/
+
+# Handy for secrets
+private_key.json
+regr.json
