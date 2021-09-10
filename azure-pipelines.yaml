@@ -55,7 +55,8 @@ stages:
             # Python to return if expired on timedelta variable
             # serviceconnection: $(serviceconnection)
       - job: GetCertificateFromLE
-        condition: # force renewal true || RetrieveCurrenCertificate is expired
+        # force renewal true || RetrieveCurrenCertificate is expired
+        condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
         variables:
           csr_common_name: $(CSR_COMMON_NAME)
           le_private_key_json: $(LE_PRIVATE_KEY_JSON)
