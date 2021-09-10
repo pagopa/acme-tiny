@@ -21,31 +21,35 @@ stages:
         # condition: # if force renewal is false
         steps:
           - task: AzureCLI@2
-            displayName: 'get certificate from keyvault'
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                NEW_CERTIFICATE='False'
                 if [ "${FORCE_RENEW_CERT}" = True ]
                 then
-                  NEW_CERTIFICATE='True'
+                  echo "force renew certificate"
+                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                   exit 0
                 fi
+
+                echo "get certificate from keyvault"
                 RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f cert.pem)
+
                 if [ $? -eq 0 ]
                 then
-                  # certificate not found, create new certificate
-                  NEW_CERTIFICATE='True'
-                else
+                  echo "certificate found, test expire date"
                   if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in cert.pem
                   then
-                    echo "Certificate is good for another day!"
+                    echo "expire date is greater then CERT_NAME_EXPIRE_SECONDS"
+                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
                   else
-                    echo "Certificate has expired or will do so within 24 hours!"
-                    echo "(or is invalid/not found)"
+                    echo "expire date is less then CERT_NAME_EXPIRE_SECONDS, , create new certificate"
+                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                   fi
+                else
+                  echo "certificate not found, create new certificate"
+                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 fi
             # associate Service Connection, retrieve only Certificates
             # Python to return if expired on timedelta variable
