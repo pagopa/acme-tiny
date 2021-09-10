@@ -5,6 +5,15 @@ pool:
 #parameters:
 #  - forceRenewal: false
 
+parameters:
+  - name: 'FORCE_RENEW_CERT'
+    displayName: 'force certificate to be renewed'
+    type: boolean
+    default: False
+    values:
+      - False
+      - True
+
 stages:
   - stage: GetCertificate
     jobs:
@@ -18,12 +27,17 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                NEW_CERTIFICATE='false'
+                NEW_CERTIFICATE='False'
+                if [ "${FORCE_RENEW_CERT}" = True ]
+                then
+                  NEW_CERTIFICATE='True'
+                  exit 0
+                fi
                 RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f cert.pem)
                 if [ $? -eq 0 ]
                 then
                   # certificate not found, create new certificate
-                  NEW_CERTIFICATE='true'
+                  NEW_CERTIFICATE='True'
                 else
                   if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in cert.pem
                   then
