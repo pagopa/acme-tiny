@@ -12,6 +12,27 @@ stages:
         # condition: # if force renewal is false
         steps:
           - task: AzureCLI@2
+            displayName: 'get certificate from keyvault'
+            inputs:
+              azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                NEW_CERTIFICATE='false'
+                RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f cert.pem)
+                if [ $? -eq 0 ]
+                then
+                  # certificate not found, create new certificate
+                  NEW_CERTIFICATE='true'
+                else
+                  if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in cert.pem
+                  then
+                    echo "Certificate is good for another day!"
+                  else
+                    echo "Certificate has expired or will do so within 24 hours!"
+                    echo "(or is invalid/not found)"
+                  fi
+                fi
             # associate Service Connection, retrieve only Certificates
             # Python to return if expired on timedelta variable
             # serviceconnection: $(serviceconnection)
