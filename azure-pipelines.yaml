@@ -1,23 +1,50 @@
 pool:
-  vmImage: "ubuntu-latest"
+  vmImage: "ubuntu-20.04"
 
-variables:
-  - name: cn
-    value: $(CSR_COMMON_NAME)
+# parameters override
+#parameters:
+#  - forceRenewal: false
 
 stages:
   - stage: GetCertificate
     jobs:
-      - job: PrepareCSR
+      - job: GetCertificateFromKV
+        # condition: # if force renewal is false
+        steps:
+          - task: AzureCLI@2
+            # associate Service Connection, retrieve only Certificates
+            # Python to return if expired on timedelta variable
+            # serviceconnection: $(serviceconnection)
+      - job: GetCertificateFromLE
+        condition: # force renewal true || RetrieveCurrenCertificate is expired
+        variables:
+          csr_common_name: $(CSR_COMMON_NAME)
+          le_private_key_json: $(LE_PRIVATE_KEY_JSON)
+          le_regr_json: $(LE_REGR_JSON)
+          azure_dns_zone: $(AZURE_DNS_ZONE)
+          azure_dns_zone_resource_group: $(AZURE_DNS_ZONE_RESOURCE_GROUP)
+          azure_subscription_id: $(AZURE_SUBSCRIPTION_ID)
         steps:
           - task: PythonScript@0
             inputs:
               script: pip3 install -r requirements.txt
           - task: PythonScript@0
             inputs:
-              script: python3 generate_csr.py --common-name ${{ variables.cn }}
-      - job: RunACMEClient
-        steps:
+              script: python3 generate_csr.py --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
+          - task: Bash@3
+            inputs:
+              targetType: "inline"
+              script: |
+                printf "%s\n" $LE_PRIVATE_KEY_JSON > private_key.json
+                printf "%s\n" $LE_REGR_JSON > regr.json
           - task: PythonScript@0
             inputs:
-              script: python3 acme_tiny.py --private-key private_key.json --regr regr.json > certificate_chain.pem
+              script: python3 acme_tiny.py --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
+          - task: Bash@3
+            inputs:
+              targetType: "inline"
+              # condition: #clean always
+              script: |
+                rm -f private_key.json
+                rm -f regr.json
+                cat certificate_chain.pem

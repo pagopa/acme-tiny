@@ -17,6 +17,7 @@ import jwcrypto.jwk
 import azure.mgmt.dns
 import azure.identity
 
+
 # FIXME do not use staging in final release of code
 DEFAULT_DIRECTORY_URL = "https://acme-staging-v02.api.letsencrypt.org/directory"
 DEFAULT_DNS_TTL_SEC = 300
@@ -26,9 +27,10 @@ LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
 
-def update_azure_dns(subscription, resource_group, zone, domain, value):
+def update_azure_dns(subscription, resource_group, zone, domain, value, operation):
 
     log = LOGGER
+
     # helper function - get a DNS API client
     def _get_dns_client(subscription):
         identity = azure.identity.ClientSecretCredential(
@@ -43,22 +45,35 @@ def update_azure_dns(subscription, resource_group, zone, domain, value):
         if domain.rfind(".{}".format(zone)) != -1:
             domain = domain[:domain.rfind(".{}".format(zone))]
         name = "_acme-challenge.{}".format(domain)
-        log.info("Updating TXT record on %s in %s zone", name, zone)
         return name
 
     client = _get_dns_client(subscription)
     log.info("Azure DNS client initialized")
-    client.record_sets.create_or_update(
-        resource_group,
-        zone,
-        _get_name(domain, zone),
-        "TXT",
-        {
-            "ttl": DEFAULT_DNS_TTL_SEC,
-            "records": [{"value": value}]
-        }
-    )
-    log.info("TXT record updated!")
+
+    if operation == "update":
+        log.info("Updating TXT record on %s in %s zone", name, zone)
+        client.record_sets.create_or_update(
+            resource_group,
+            zone,
+            _get_name(domain, zone),
+            "TXT",
+            {
+                "ttl": DEFAULT_DNS_TTL_SEC,
+                "records": [{"value": value}]
+            }
+        )
+        log.info("TXT record updated!")
+    elif operation == "delete":
+        log.info("Deleting TXT record on %s in %s zone", name, zone)
+        client.record_sets.delete(
+            resource_group,
+            zone,
+            _get_name(domain, zone),
+            "TXT"
+        )
+        log.info("TXT record deleted!")
+    else:
+        raise ValueError("Unknown DNS operation: {}".format(operation))
 
 
 def get_crt(private_key, regr, csr, directory_url, out):
@@ -124,42 +139,37 @@ def get_crt(private_key, regr, csr, directory_url, out):
         return result
 
     # read private_key.json file
-    log.info("Parsing private_key.json...")
+    log.info("Parsing the --private-key file...")
     with open(private_key, "r") as f:
         jwk = jwcrypto.jwk.JWK.from_json(f.read())
     thumbprint = jwk.thumbprint()
     log.info("JWK thumbprint: %s", thumbprint)
     private_key = cryptography.hazmat.primitives.serialization.load_pem_private_key(
         jwk.export_to_pem(private_key=True, password=None), password=None)
-    log.info("Private key loaded.")
+    log.info("Private key loaded")
 
     if jwk.key_type == "RSA":
         alg = "RS256"
     elif jwk.key_type == "EC":
         alg = "ES256"
     else:
-        log.error("Unknown key type")
-        return None
+        raise ValueError("Unknown JWK key_type: {}".format(jwk.key_type))
 
     # read regr.json file
-    log.info("Parsing regr.json...")
+    log.info("Parsing the --regr file...")
     with open(regr, "r") as f:
         kid = json.loads(f.read())["uri"]
     log.info("Account kid: %s", kid)
 
     # read the csr file
-    log.info("Parsing csr...")
+    log.info("Parsing the --csr file...")
     with open(csr, "rb") as f:
         csr_raw = f.read()
-    try:
-        csr_der = cryptography.x509.load_der_x509_csr(csr_raw)
-    except ValueError:
-        log.error("Unable to parse CSR in DER format.")
-        return None
+    csr_der = cryptography.x509.load_der_x509_csr(csr_raw)
 
     # read the CN and SAN fields from the CSR - ASSUMPTION: just one field for CN -> [0]
     common_name = [csr_der.subject.get_attributes_for_oid(cryptography.x509.OID_COMMON_NAME)[0].value.strip()]
-    log.info("Found CN domain: %s", common_name)
+    log.info("CSR CN: %s", common_name)
     try:
         subject_alternative_names = list(map(
             lambda x: x.value,
@@ -167,17 +177,17 @@ def get_crt(private_key, regr, csr, directory_url, out):
         ))
     except cryptography.x509.extensions.ExtensionNotFound:
         subject_alternative_names = []
-    log.info("Found SAN domains: %s", subject_alternative_names)
+    log.info("CSR SAN: %s", subject_alternative_names)
     # get the union of this set
     domains = list(set().union(subject_alternative_names, common_name))
     log.info("Domains to validate: %s", ", ".join(domains))
 
-    log.info("Getting directory...")
+    log.info("Now using ACMEv2, getting the directory...")
     directory, _, _ = _do_request(directory_url, err_msg="Error getting directory")
     log.info("Directory found!")
 
     # create a new order
-    log.info("Creating new order...")
+    log.info("Creating a new order...")
     order_payload = {"identifiers": [{"type": "dns", "value": d} for d in domains]}
     order, _, order_headers = _send_signed_request(directory['newOrder'], order_payload, "Error creating new order")
     log.info("Order created!")
@@ -192,13 +202,15 @@ def get_crt(private_key, regr, csr, directory_url, out):
         challenge = [c for c in authorization['challenges'] if c['type'] == "dns-01"][0]
         token = re.sub(r"[^A-Za-z0-9_\-]", "_", challenge['token'])
         txt_record_value = _b64(hashlib.sha256("{}.{}".format(token, thumbprint).encode("utf-8")).digest())
-        log.info("Set TXT record on _acme-challenge.%s to %s", domain, txt_record_value)
+        log.info("A TXT record on _acme-challenge.%s must be set to %s", domain, txt_record_value)
 
+        # those env variables must exist, as they have been checked earlier at startup
         subscription = os.environ["AZURE_SUBSCRIPTION_ID"]
         resource_group = os.environ["AZURE_DNS_ZONE_RESOURCE_GROUP"]
         zone = os.environ["AZURE_DNS_ZONE"]
 
-        update_azure_dns(subscription, resource_group, zone, domain, txt_record_value)
+        # modify DNS record
+        azure_dns_operation(subscription, resource_group, zone, domain, txt_record_value, "update")
 
         # check until the challenge is done
         _send_signed_request(challenge['url'], {}, "Error submitting challenges: {}".format(domain))
@@ -208,13 +220,14 @@ def get_crt(private_key, regr, csr, directory_url, out):
         log.info("%s verified!", domain)
 
     # finalize the order with the csr
-    log.info("Signing certificate...")
+    log.info("Asking to sign the certificate...")
     _send_signed_request(order['finalize'], {"csr": _b64(csr_raw)}, "Error finalizing order")
 
     # poll the order to monitor when it's done
     order = _poll_until_not(order_headers['Location'], ["pending", "processing"], "Error checking order status")
     if order['status'] != "valid":
         raise ValueError("Order failed: {}".format(order))
+    log.info("Order is valid")
 
     # download the certificate
     certificate_pem, _, _ = _send_signed_request(order['certificate'], None, "Certificate download failed")
@@ -224,6 +237,9 @@ def get_crt(private_key, regr, csr, directory_url, out):
         f.write(bytes(certificate_pem, "utf-8"))
     log.info("Certificate bundle saved to %s", out)
 
+    # attempt to cleanup DNS records
+    # TODO
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
@@ -231,10 +247,10 @@ def main(argv=None):
         description=textwrap.dedent("""\
             This script automates the process of getting a signed TLS certificate from Let's Encrypt using
             the ACME protocol. It is intented to be run in a Azure DevOps pipeline and have access to your private
-            account key, so PLEASE READ THROUGH IT! It's only ~250 lines, so it won't take long.
+            account key, so PLEASE READ THROUGH IT! It's only ~300 lines, so it won't take long.
 
             Example Usage:
-            python acme_tiny.py --private-key ./private_key.json --regr ./regr.json --csr ./domain.csr.der --out signed_chain.crt
+            python3 acme_tiny.py --private-key ./private_key.json --regr ./regr.json --csr ./domain.csr.der --out signed_chain.crt
             """)
     )
     parser.add_argument("--private-key", default="private_key.json", help="Path to your Let's Encrypt account private key")

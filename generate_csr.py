@@ -19,10 +19,12 @@ def get_csr(common_name, out, keyout, rsa_key_size):
 
     # generate private_key, RSA type
     # TODO support ECDSA type of certificates
+    log.info("Generating a RSA private key...")
     private_key = cryptography.hazmat.primitives.asymmetric.rsa.generate_private_key(
-        public_exponent=65537, # this is RSA e exponent. DO NOT CHANGE THIS VALUE!
+        public_exponent=65537, # this is the RSA e exponent. DO NOT CHANGE THIS VALUE!
         key_size = rsa_key_size
     )
+
     # save private_key
     with open(keyout, "wb") as f:
         f.write(
@@ -35,6 +37,7 @@ def get_csr(common_name, out, keyout, rsa_key_size):
     log.info("Private key saved to %s", keyout)
 
     # CSR creation
+    log.info("Building a Certificate Signing Request (CSR)...")
     builder = cryptography.x509.CertificateSigningRequestBuilder()
     # set Common Name
     builder = builder.subject_name(cryptography.x509.Name(
@@ -77,7 +80,7 @@ def main(argv=None):
             This script generates a CSR in DER format.
 
             Example Usage:
-            python generate_csr.py --common-name example.com --keyout csr.key --out csr.der --rsa-key-size 2048
+            python3 generate_csr.py --common-name example.com --keyout csr.key --out csr.der --rsa-key-size 2048
             """)
     )
     parser.add_argument("--common-name", required=True, help="X509 Common Name string")
