@@ -11,12 +11,12 @@ import re
 import sys
 import textwrap
 import time
-from urllib.request import urlopen, Request
+from urllib.request import Request, urlopen
+
+import azure.identity
+import azure.mgmt.dns
 import cryptography
 import jwcrypto.jwk
-import azure.mgmt.dns
-import azure.identity
-
 
 # FIXME do not use staging in final release of code
 DEFAULT_DIRECTORY_URL = "https://acme-staging-v02.api.letsencrypt.org/directory"
@@ -27,16 +27,16 @@ LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
 
-def update_azure_dns(subscription, resource_group, zone, domain, value, operation):
+def azure_dns_operation(subscription, resource_group, zone, domain, value, operation):
 
     log = LOGGER
 
     # helper function - get a DNS API client
     def _get_dns_client(subscription):
         identity = azure.identity.ClientSecretCredential(
-            client_id = os.environ["AZURE_CLIENT_ID"],
-            client_secret = os.environ["AZURE_CLIENT_SECRET"],
-            tenant_id = os.environ["AZURE_TENANT_ID"]
+            client_id=os.environ["AZURE_CLIENT_ID"],
+            client_secret=os.environ["AZURE_CLIENT_SECRET"],
+            tenant_id=os.environ["AZURE_TENANT_ID"]
         )
         return azure.mgmt.dns.DnsManagementClient(identity, subscription)
 
@@ -50,12 +50,15 @@ def update_azure_dns(subscription, resource_group, zone, domain, value, operatio
     client = _get_dns_client(subscription)
     log.info("Azure DNS client initialized")
 
+    # get the domain without the zone name
+    name = _get_name(domain, zone)
+
     if operation == "update":
         log.info("Updating TXT record on %s in %s zone", name, zone)
         client.record_sets.create_or_update(
             resource_group,
             zone,
-            _get_name(domain, zone),
+            name,
             "TXT",
             {
                 "ttl": DEFAULT_DNS_TTL_SEC,
@@ -64,6 +67,7 @@ def update_azure_dns(subscription, resource_group, zone, domain, value, operatio
         )
         log.info("TXT record updated!")
     elif operation == "delete":
+
         log.info("Deleting TXT record on %s in %s zone", name, zone)
         client.record_sets.delete(
             resource_group,
@@ -79,7 +83,7 @@ def update_azure_dns(subscription, resource_group, zone, domain, value, operatio
 def get_crt(private_key, regr, csr, directory_url, out):
 
     log = LOGGER
-    directory, alg = None, None # global variables
+    directory, alg = None, None  # global variables
 
     # helper function - base64 encode for jose spec
     def _b64(b):
@@ -87,22 +91,28 @@ def get_crt(private_key, regr, csr, directory_url, out):
 
     # helper function - make request and automatically parse json response
     def _do_request(url, data=None, err_msg="Error", depth=0):
+        req = Request(
+            url, data=data, headers={
+                "Content-Type": "application/jose+json", "User-Agent": "acme-tiny"}
+        )
+        if req.type != "https":
+            raise ValueError("{}:\nUrl: {}".format("Disallowed schema", url))
         try:
-            resp = urlopen(Request(
-                url, data=data, headers={"Content-Type": "application/jose+json", "User-Agent": "acme-tiny"}
-            ))
-            resp_data, code, headers = resp.read().decode("utf8"), resp.getcode(), resp.headers
+            resp = urlopen(req)
+            resp_data, code, headers = resp.read().decode(
+                "utf8"), resp.getcode(), resp.headers
         except IOError as e:
             resp_data = e.read().decode("utf8") if hasattr(e, "read") else str(e)
             code, headers = getattr(e, "code", None), {}
         try:
-            resp_data = json.loads(resp_data) # try to parse json results
+            resp_data = json.loads(resp_data)  # try to parse json results
         except ValueError:
-            pass # ignore json parsing errors
+            pass  # ignore json parsing errors
         if depth < 100 and code == 400 and resp_data['type'] == "urn:ietf:params:acme:error:badNonce":
-            raise IndexError(resp_data) # allow 100 retrys for bad nonces
+            raise IndexError(resp_data)  # allow 100 retrys for bad nonces
         if code not in [200, 201, 204]:
-            raise ValueError("{}:\nUrl: {}\nData: {}\nResponse Code: {}\nResponse: {}".format(err_msg, url, data, code, resp_data))
+            raise ValueError("{}:\nUrl: {}\nData: {}\nResponse Code: {}\nResponse: {}".format(
+                err_msg, url, data, code, resp_data))
         return resp_data, code, headers
 
     # helper function - sign with cryptography module
@@ -111,29 +121,35 @@ def get_crt(private_key, regr, csr, directory_url, out):
             return private_key.sign(
                 payload,
                 cryptography.hazmat.primitives.asymmetric.padding.PKCS1v15(),
-				cryptography.hazmat.primitives.hashes.SHA256()) # RS256
+                cryptography.hazmat.primitives.hashes.SHA256())  # RS256
         return private_key.sign(
-                payload,
-                cryptography.hazmat.primitives.asymmetric.ec.ECDSA(cryptography.hazmat.primitives.hashes.SHA256())) # ES256
+            payload,
+            cryptography.hazmat.primitives.asymmetric.ec.ECDSA(
+                cryptography.hazmat.primitives.hashes.SHA256())
+        )  # ES256
 
     # helper function - make signed requests
     def _send_signed_request(url, payload, err_msg, depth=0):
-        payload64 = "" if payload is None else _b64(json.dumps(payload).encode('utf8'))
+        payload64 = "" if payload is None else _b64(
+            json.dumps(payload).encode('utf8'))
         new_nonce = _do_request(directory['newNonce'])[2]['Replay-Nonce']
         protected = {"url": url, "alg": alg, "nonce": new_nonce, "kid": kid}
         protected64 = _b64(json.dumps(protected).encode('utf8'))
-        signature64 = _b64(_sign(private_key, alg, "{}.{}".format(protected64, payload64).encode("utf-8")))
-        data = json.dumps({"protected": protected64, "payload": payload64, "signature": signature64})
+        signature64 = _b64(_sign(private_key, alg, "{}.{}".format(
+            protected64, payload64).encode("utf-8")))
+        data = json.dumps(
+            {"protected": protected64, "payload": payload64, "signature": signature64})
         try:
             return _do_request(url, data=data.encode('utf8'), err_msg=err_msg, depth=depth)
-        except IndexError: # retry bad nonces (they raise IndexError)
+        except IndexError:  # retry bad nonces (they raise IndexError)
             return _send_signed_request(url, payload, err_msg, depth=(depth + 1))
 
     # helper function - poll until complete
     def _poll_until_not(url, pending_statuses, err_msg):
         result, t0 = None, time.time()
         while result is None or result['status'] in pending_statuses:
-            assert (time.time() - t0 < 3600), "Polling timeout" # 1 hour timeout
+            if (time.time() - t0 < 3600):  # 1 hour timeout
+                raise ValueError("Polling timeout")
             time.sleep(0 if result is None else 2)
             result, _, _ = _send_signed_request(url, None, err_msg)
         return result
@@ -168,12 +184,14 @@ def get_crt(private_key, regr, csr, directory_url, out):
     csr_der = cryptography.x509.load_der_x509_csr(csr_raw)
 
     # read the CN and SAN fields from the CSR - ASSUMPTION: just one field for CN -> [0]
-    common_name = [csr_der.subject.get_attributes_for_oid(cryptography.x509.OID_COMMON_NAME)[0].value.strip()]
+    common_name = [csr_der.subject.get_attributes_for_oid(
+        cryptography.x509.OID_COMMON_NAME)[0].value.strip()]
     log.info("CSR CN: %s", common_name)
     try:
         subject_alternative_names = list(map(
             lambda x: x.value,
-            csr_der.extensions.get_extension_for_oid(cryptography.x509.OID_SUBJECT_ALTERNATIVE_NAME).value
+            csr_der.extensions.get_extension_for_oid(
+                cryptography.x509.OID_SUBJECT_ALTERNATIVE_NAME).value
         ))
     except cryptography.x509.extensions.ExtensionNotFound:
         subject_alternative_names = []
@@ -183,26 +201,33 @@ def get_crt(private_key, regr, csr, directory_url, out):
     log.info("Domains to validate: %s", ", ".join(domains))
 
     log.info("Now using ACMEv2, getting the directory...")
-    directory, _, _ = _do_request(directory_url, err_msg="Error getting directory")
+    directory, _, _ = _do_request(
+        directory_url, err_msg="Error getting directory")
     log.info("Directory found!")
 
     # create a new order
     log.info("Creating a new order...")
-    order_payload = {"identifiers": [{"type": "dns", "value": d} for d in domains]}
-    order, _, order_headers = _send_signed_request(directory['newOrder'], order_payload, "Error creating new order")
+    order_payload = {"identifiers": [
+        {"type": "dns", "value": d} for d in domains]}
+    order, _, order_headers = _send_signed_request(
+        directory['newOrder'], order_payload, "Error creating new order")
     log.info("Order created!")
 
     # get the authorizations that need to be completed
     for auth_url in order['authorizations']:
-        authorization, _, _ = _send_signed_request(auth_url, None, "Error getting challenges")
+        authorization, _, _ = _send_signed_request(
+            auth_url, None, "Error getting challenges")
         domain = authorization['identifier']['value']
         log.info("Verifying %s...", domain)
 
         # find the http-01 challenge and write the challenge file
-        challenge = [c for c in authorization['challenges'] if c['type'] == "dns-01"][0]
+        challenge = [c for c in authorization['challenges']
+                     if c['type'] == "dns-01"][0]
         token = re.sub(r"[^A-Za-z0-9_\-]", "_", challenge['token'])
-        txt_record_value = _b64(hashlib.sha256("{}.{}".format(token, thumbprint).encode("utf-8")).digest())
-        log.info("A TXT record on _acme-challenge.%s must be set to %s", domain, txt_record_value)
+        txt_record_value = _b64(hashlib.sha256(
+            "{}.{}".format(token, thumbprint).encode("utf-8")).digest())
+        log.info("A TXT record on _acme-challenge.%s must be set to %s",
+                 domain, txt_record_value)
 
         # those env variables must exist, as they have been checked earlier at startup
         subscription = os.environ["AZURE_SUBSCRIPTION_ID"]
@@ -210,29 +235,36 @@ def get_crt(private_key, regr, csr, directory_url, out):
         zone = os.environ["AZURE_DNS_ZONE"]
 
         # modify DNS record
-        azure_dns_operation(subscription, resource_group, zone, domain, txt_record_value, "update")
+        azure_dns_operation(subscription, resource_group,
+                            zone, domain, txt_record_value, "update")
 
         # check until the challenge is done
-        _send_signed_request(challenge['url'], {}, "Error submitting challenges: {}".format(domain))
-        authorization = _poll_until_not(auth_url, ["pending"], "Error checking challenge status for {}".format(domain))
+        _send_signed_request(
+            challenge['url'], {}, "Error submitting challenges: {}".format(domain))
+        authorization = _poll_until_not(
+            auth_url, ["pending"], "Error checking challenge status for {}".format(domain))
         if authorization['status'] != "valid":
-            raise ValueError("Challenge did not pass for {}: {}".format(domain, authorization))
+            raise ValueError(
+                "Challenge did not pass for {}: {}".format(domain, authorization))
         log.info("%s verified!", domain)
 
     # finalize the order with the csr
     log.info("Asking to sign the certificate...")
-    _send_signed_request(order['finalize'], {"csr": _b64(csr_raw)}, "Error finalizing order")
+    _send_signed_request(order['finalize'], {
+                         "csr": _b64(csr_raw)}, "Error finalizing order")
 
     # poll the order to monitor when it's done
-    order = _poll_until_not(order_headers['Location'], ["pending", "processing"], "Error checking order status")
+    order = _poll_until_not(order_headers['Location'], [
+                            "pending", "processing"], "Error checking order status")
     if order['status'] != "valid":
         raise ValueError("Order failed: {}".format(order))
     log.info("Order is valid")
 
     # download the certificate
-    certificate_pem, _, _ = _send_signed_request(order['certificate'], None, "Certificate download failed")
+    certificate_pem, _, _ = _send_signed_request(
+        order['certificate'], None, "Certificate download failed")
     log.info("Certificate signed!")
-    
+
     with open(out, "wb") as f:
         f.write(bytes(certificate_pem, "utf-8"))
     log.info("Certificate bundle saved to %s", out)
@@ -253,12 +285,18 @@ def main(argv=None):
             python3 acme_tiny.py --private-key ./private_key.json --regr ./regr.json --csr ./domain.csr.der --out signed_chain.crt
             """)
     )
-    parser.add_argument("--private-key", default="private_key.json", help="Path to your Let's Encrypt account private key")
-    parser.add_argument("--regr", default="regr.json", help="Path to your Let's Encrypt account registration info")
-    parser.add_argument("--csr", default="csr.der", help="Path to your certificate signing request")
-    parser.add_argument("--quiet", action="store_const", const=logging.ERROR, help="Suppress output except for errors")
-    parser.add_argument("--directory-url", default=DEFAULT_DIRECTORY_URL, help="Certificate authority directory url, default is Let's Encrypt")
-    parser.add_argument("--out", default="certificate_chain.pem", help="Destination path of the certificate")
+    parser.add_argument("--private-key", default="private_key.json",
+                        help="Path to your Let's Encrypt account private key")
+    parser.add_argument("--regr", default="regr.json",
+                        help="Path to your Let's Encrypt account registration info")
+    parser.add_argument("--csr", default="csr.der",
+                        help="Path to your certificate signing request")
+    parser.add_argument("--quiet", action="store_const",
+                        const=logging.ERROR, help="Suppress output except for errors")
+    parser.add_argument("--directory-url", default=DEFAULT_DIRECTORY_URL,
+                        help="Certificate authority directory url, default is Let's Encrypt")
+    parser.add_argument("--out", default="certificate_chain.pem",
+                        help="Destination path of the certificate")
 
     args = parser.parse_args(argv)
     LOGGER.setLevel(args.quiet or LOGGER.level)
@@ -272,8 +310,9 @@ def main(argv=None):
     os.environ["AZURE_TENANT_ID"]
 
     # main function
-    get_crt(args.private_key, args.regr, args.csr, args.directory_url, args.out)
+    get_crt(args.private_key, args.regr, args.csr,
+            args.directory_url, args.out)
 
 
-if __name__ == "__main__": # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     main(sys.argv[1:])
