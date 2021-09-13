@@ -11,3 +11,6 @@ static/
 # Handy for secrets
 private_key.json
 regr.json
+
+# Python3 virtual environment
+.venv/
