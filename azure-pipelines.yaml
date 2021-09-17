@@ -113,6 +113,7 @@ stages:
 
       - job: CleanUp
         dependsOn: GetCertificateFromLE
+        condition: succeededOrFailed()
         steps:
           - task: Bash@3
             inputs:
