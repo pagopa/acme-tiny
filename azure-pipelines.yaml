@@ -73,6 +73,7 @@ stages:
             name: requirements
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
+              scriptSource: inline
               script: |
                 cat requirements.txt
                 pip3 install -r ./requirements.txt
