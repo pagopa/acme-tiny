@@ -20,6 +20,7 @@ stages:
       - job: GetCertificateFromKV
         # condition: # if force renewal is false
         steps:
+          - script: env
           - task: AzureCLI@2
             name: CheckExpire
             inputs:
@@ -73,6 +74,7 @@ stages:
           AZURE_CLIENT_SECRET: $(LE_AZURE_CLIENT_SECRET)
           NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
+          - script: env
           - script: pip3 install -r requirements.txt
             name: requirements
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
