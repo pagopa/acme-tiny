@@ -30,6 +30,7 @@ stages:
                 then
                   echo "force renew certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+                  export NEW_CERTIFICATE=True
                   exit 0
                 fi
 
@@ -41,6 +42,7 @@ stages:
                 else
                   echo "certificate not found, create new certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+                  export NEW_CERTIFICATE=True
                 fi
 
                 # if [ $? -eq 0 ]
