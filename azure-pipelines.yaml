@@ -111,7 +111,6 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem
-
       - job: CleanUp
         dependsOn: GetCertificateFromLE
         # condition: succeededOrFailed()
