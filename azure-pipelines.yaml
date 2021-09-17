@@ -104,12 +104,9 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem
-      - job: CleanUp
-        dependsOn: GetCertificateFromLE
-        condition: succeededOrFailed()
-        steps:
           - task: Bash@3
             name: clean_up
+            condition: succeededOrFailed()
             inputs:
               targetType: "inline"
               script: |
@@ -117,3 +114,16 @@ stages:
                 rm -f private_key.json
                 rm -f regr.json
                 rm -f certificate_chain.pem
+      # - job: CleanUp
+      #   dependsOn: GetCertificateFromLE
+      #   condition: succeededOrFailed()
+      #   steps:
+      #     - task: Bash@3
+      #       name: clean_up
+      #       inputs:
+      #         targetType: "inline"
+      #         script: |
+      #           cat certificate_chain.pem
+      #           rm -f private_key.json
+      #           rm -f regr.json
+      #           rm -f certificate_chain.pem
