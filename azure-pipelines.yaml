@@ -68,10 +68,6 @@ stages:
         condition: succeeded()
         dependsOn: GetCertificateFromKV
         variables:
-          AZURE_TENANT_ID: $(LE_AZURE_TENANT_ID)
-          AZURE_SUBSCRIPTION_ID: $(LE_AZURE_SUBSCRIPTION_ID)
-          AZURE_CLIENT_ID: $(LE_AZURE_CLIENT_ID)
-          AZURE_CLIENT_SECRET: $(LE_AZURE_CLIENT_SECRET)
           NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
           - script: env
@@ -96,6 +92,11 @@ stages:
           - task: PythonScript@0
             name: acme_tiny
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+            env:
+              AZURE_TENANT_ID: $(LE_AZURE_TENANT_ID)
+              AZURE_SUBSCRIPTION_ID: $(LE_AZURE_SUBSCRIPTION_ID)
+              AZURE_CLIENT_ID: $(LE_AZURE_CLIENT_ID)
+              AZURE_CLIENT_SECRET: $(LE_AZURE_CLIENT_SECRET)
             inputs:
               scriptSource: filePath
               scriptPath: acme_tiny.py
