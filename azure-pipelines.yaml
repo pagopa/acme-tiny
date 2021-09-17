@@ -102,12 +102,23 @@ stages:
               scriptSource: filePath
               scriptPath: acme_tiny.py
               arguments: --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
+          - task: AzureCLI@2
+            name: save_cert_keyvault
+            inputs:
+              azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem
+
+      - job: CleanUp
+        dependsOn: GetCertificateFromLE
+        steps:
           - task: Bash@3
-            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               targetType: "inline"
-              # condition: #clean always
               script: |
+                cat certificate_chain.pem
                 rm -f private_key.json
                 rm -f regr.json
-                cat certificate_chain.pem
+                rm -f certificate_chain.pem
