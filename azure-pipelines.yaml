@@ -72,18 +72,14 @@ stages:
           - script: pip3 install -r requirements.txt
             name: requirements
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
-          # - task: PythonScript@0
-          #   name: requirements
-          #   condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
-          #   inputs:
-          #     scriptSource: inline
-          #     script: |
-          #       pip3 install -r requirements.txt
           - task: PythonScript@0
             name: generate_csr
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
-              script: python3 generate_csr.py --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
+              # script: python3 generate_csr.py --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
+              scriptSource: filePath
+              scriptPath: generate_csr.py
+              arguments: --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
           - task: Bash@3
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
