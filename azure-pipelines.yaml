@@ -104,6 +104,7 @@ stages:
               arguments: --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
           - task: AzureCLI@2
             name: save_cert_keyvault
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
