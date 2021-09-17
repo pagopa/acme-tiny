@@ -21,6 +21,7 @@ stages:
         # condition: # if force renewal is false
         steps:
           - task: AzureCLI@2
+            name: CheckExpire
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
@@ -30,7 +31,6 @@ stages:
                 then
                   echo "force renew certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                  export NEW_CERTIFICATE=True
                   exit 0
                 fi
 
@@ -42,7 +42,6 @@ stages:
                 else
                   echo "certificate not found, create new certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                  export NEW_CERTIFICATE=True
                 fi
 
                 # if [ $? -eq 0 ]
@@ -65,7 +64,8 @@ stages:
             # serviceconnection: $(serviceconnection)
       - job: GetCertificateFromLE
         # force renewal true || RetrieveCurrenCertificate is expired
-        condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+        condition: and(succeeded())
+        dependsOn: GetCertificateFromKV
         variables:
           csr_common_name: $(CSR_COMMON_NAME)
           le_private_key_json: $(LE_PRIVATE_KEY_JSON)
@@ -73,23 +73,29 @@ stages:
           azure_dns_zone: $(AZURE_DNS_ZONE)
           azure_dns_zone_resource_group: $(AZURE_DNS_ZONE_RESOURCE_GROUP)
           azure_subscription_id: $(AZURE_SUBSCRIPTION_ID)
+          NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
           - task: PythonScript@0
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               script: pip3 install -r requirements.txt
           - task: PythonScript@0
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               script: python3 generate_csr.py --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
           - task: Bash@3
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               targetType: "inline"
               script: |
                 printf "%s\n" $LE_PRIVATE_KEY_JSON > private_key.json
                 printf "%s\n" $LE_REGR_JSON > regr.json
           - task: PythonScript@0
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               script: python3 acme_tiny.py --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
           - task: Bash@3
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               targetType: "inline"
               # condition: #clean always
