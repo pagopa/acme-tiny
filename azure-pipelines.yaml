@@ -55,6 +55,7 @@ stages:
               targetType: "inline"
               script: |
                 rm -f certificate.pem
+
       - job: GetCertificateFromLE
         condition: succeeded()
         dependsOn: GetCertificateFromKV
