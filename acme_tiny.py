@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 import azure.identity
 import azure.mgmt.dns
+from azure.mgmt.dns.models import TxtRecord
 import cryptography
 import jwcrypto.jwk
 
@@ -53,7 +54,7 @@ def azure_dns_operation(subscription, resource_group, zone, domain, value, opera
     name = _get_name(domain, zone)
 
     if operation == "update":
-        log.info("Updating TXT record on %s in %s zone", name, zone)
+        log.info("Updating TXT record on %s in %s zone with value %s", name, zone, value)
         client.record_sets.create_or_update(
             resource_group,
             zone,
@@ -61,9 +62,10 @@ def azure_dns_operation(subscription, resource_group, zone, domain, value, opera
             "TXT",
             {
                 "ttl": DEFAULT_DNS_TTL_SEC,
-                "txt_records": [{"value": value}]
+                "txt_records": [{"value": [value]}]
             }
         )
+
         log.info("TXT record updated!")
     elif operation == "delete":
 
@@ -147,7 +149,7 @@ def get_crt(private_key, regr, csr, directory_url, out):
     def _poll_until_not(url, pending_statuses, err_msg):
         result, t0 = None, time.time()
         while result is None or result['status'] in pending_statuses:
-            if (time.time() - t0 < 3600):  # 1 hour timeout
+            if (time.time() - t0 > 3600):  # 1 hour timeout
                 raise ValueError("Polling timeout")
             time.sleep(0 if result is None else 2)
             result, _, _ = _send_signed_request(url, None, err_msg)
