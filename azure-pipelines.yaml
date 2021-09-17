@@ -69,7 +69,7 @@ stages:
         variables:
           NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
-          - script: pip3 install -r requirements.txt
+          - script: pip3 install --require-hashes -r requirements.txt
             name: install_requirements
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
           - task: PythonScript@0
