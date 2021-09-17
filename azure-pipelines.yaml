@@ -37,6 +37,7 @@ stages:
                 then
                   echo "certificate found, test expire date"
                   rm -f certificate.pem
+                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 else
                   echo "certificate not found, create new certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
