@@ -24,7 +24,6 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                env
                 echo $FORCE_RENEW_CERT
                 if [ "${FORCE_RENEW_CERT}" = True ]
                 then
