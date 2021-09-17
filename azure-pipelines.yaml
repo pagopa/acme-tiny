@@ -103,6 +103,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                cat crs.key >> certificate_chain.pem
                 az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem
           - task: Bash@3
             name: clean_up
