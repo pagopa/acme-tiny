@@ -33,16 +33,15 @@ stages:
 
                 echo "get certificate from keyvault"
                 RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f certificate.pem)
+                
                 if [ $? -eq 0 ]
                 then
                   echo "certificate found, test expire date"
                   if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in certificate.pem
                   then
-                    rm -f certificate.pem
                     echo "expire date is greater then $CERT_NAME_EXPIRE_SECONDS seconds"
                     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
                   else
-                    rm -f certificate.pem
                     echo "expire date is less then $CERT_NAME_EXPIRE_SECONDS seconds, create new certificate"
                     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                   fi
@@ -50,6 +49,13 @@ stages:
                   echo "certificate not found, create new certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 fi
+          - task: Bash@3
+            name: clean_up
+            condition: succeededOrFailed()
+            inputs:
+              targetType: "inline"
+              script: |
+                rm -f certificate.pem
       - job: GetCertificateFromLE
         condition: succeeded()
         dependsOn: GetCertificateFromKV
