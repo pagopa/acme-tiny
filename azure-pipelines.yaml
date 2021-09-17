@@ -110,6 +110,7 @@ stages:
             inputs:
               targetType: "inline"
               script: |
+                cat certificate_chain.pem
                 rm -f private_key.json
                 rm -f regr.json
                 rm -f certificate_chain.pem
