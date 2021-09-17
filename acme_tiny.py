@@ -42,8 +42,8 @@ def azure_dns_operation(subscription, resource_group, zone, domain, value, opera
 
     # helper function - remove zone name from domain string
     def _get_name(domain, zone):
-        if domain.endswith(zone):
-            domain = domain[:-len(zone)]
+        if domain.endswith(".{}".format(zone)):
+            domain = domain[:-len(".{}".format(zone))]
         return "_acme-challenge.{}".format(domain)
 
     client = _get_dns_client(subscription)
