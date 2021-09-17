@@ -17,6 +17,8 @@ stages:
         steps:
           - task: AzureCLI@2
             name: check_expire
+            env:
+              FORCE_RENEW_CERT: parameters.FORCE_RENEW_CERT
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
