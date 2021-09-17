@@ -67,12 +67,6 @@ stages:
         condition: succeeded()
         dependsOn: GetCertificateFromKV
         variables:
-          csr_common_name: $(CSR_COMMON_NAME)
-          le_private_key_json: $(LE_PRIVATE_KEY_JSON)
-          le_regr_json: $(LE_REGR_JSON)
-          azure_dns_zone: $(AZURE_DNS_ZONE)
-          azure_dns_zone_resource_group: $(AZURE_DNS_ZONE_RESOURCE_GROUP)
-          azure_subscription_id: $(AZURE_SUBSCRIPTION_ID)
           NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
           - task: PythonScript@0
