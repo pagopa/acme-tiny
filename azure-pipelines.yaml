@@ -1,10 +1,6 @@
 pool:
   vmImage: "ubuntu-20.04"
 
-# parameters override
-#parameters:
-#  - forceRenewal: false
-
 parameters:
   - name: 'FORCE_RENEW_CERT'
     displayName: 'force certificate to be renewed'
@@ -59,15 +55,12 @@ stages:
                 #   echo "certificate not found, create new certificate"
                 #   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 # fi
-            # associate Service Connection, retrieve only Certificates
-            # Python to return if expired on timedelta variable
-            # serviceconnection: $(serviceconnection)
+                # Python to return if expired on timedelta variable
       - job: GetCertificateFromLE
-        # force renewal true || RetrieveCurrenCertificate is expired
         condition: succeeded()
         dependsOn: GetCertificateFromKV
         variables:
-          NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
+          NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['check_expire.NEW_CERTIFICATE'] ]
         steps:
           - script: pip3 install --require-hashes -r requirements.txt
             name: install_requirements
@@ -113,9 +106,10 @@ stages:
                 az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem
       - job: CleanUp
         dependsOn: GetCertificateFromLE
-        # condition: succeededOrFailed()
+        condition: succeededOrFailed()
         steps:
           - task: Bash@3
+            name: clean_up
             inputs:
               targetType: "inline"
               script: |
