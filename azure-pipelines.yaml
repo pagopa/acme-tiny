@@ -76,11 +76,11 @@ stages:
             name: generate_csr
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
-              # script: python3 generate_csr.py --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
               scriptSource: filePath
               scriptPath: generate_csr.py
               arguments: --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
           - task: Bash@3
+            name: save_keys_to_file
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               targetType: "inline"
@@ -88,9 +88,12 @@ stages:
                 printf "%s\n" $LE_PRIVATE_KEY_JSON > private_key.json
                 printf "%s\n" $LE_REGR_JSON > regr.json
           - task: PythonScript@0
+            name: acme_tiny
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
-              script: python3 acme_tiny.py --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
+              scriptSource: filePath
+              scriptPath: acme_tiny.py
+              arguments: --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
           - task: Bash@3
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
