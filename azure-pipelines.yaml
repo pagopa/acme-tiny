@@ -33,32 +33,33 @@ stages:
 
                 echo "get certificate from keyvault"
                 RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f certificate.pem)
-                if [ $? -eq 0 ]
-                then
-                  echo "certificate found, test expire date"
-                  rm -f certificate.pem
-                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                else
-                  echo "certificate not found, create new certificate"
-                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                fi
-
                 # if [ $? -eq 0 ]
                 # then
                 #   echo "certificate found, test expire date"
-                #   if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in cert.pem
-                #   then
-                #     echo "expire date is greater then CERT_NAME_EXPIRE_SECONDS"
-                #     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
-                #   else
-                #     echo "expire date is less then CERT_NAME_EXPIRE_SECONDS, , create new certificate"
-                #     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                #   fi
+                #   rm -f certificate.pem
+                #   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 # else
                 #   echo "certificate not found, create new certificate"
                 #   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 # fi
-                # Python to return if expired on timedelta variable
+
+                if [ $? -eq 0 ]
+                then
+                  echo "certificate found, test expire date"
+                  if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in certificate.pem
+                  then
+                    rm -f certificate.pem
+                    echo "expire date is greater then CERT_NAME_EXPIRE_SECONDS"
+                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
+                  else
+                    rm -f certificate.pem
+                    echo "expire date is less then CERT_NAME_EXPIRE_SECONDS, , create new certificate"
+                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+                  fi
+                else
+                  echo "certificate not found, create new certificate"
+                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+                fi
       - job: GetCertificateFromLE
         condition: succeeded()
         dependsOn: GetCertificateFromKV
