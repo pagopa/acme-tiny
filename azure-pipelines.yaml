@@ -84,6 +84,9 @@ stages:
           - task: Bash@3
             name: save_keys_to_file
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+            env:
+              LE_PRIVATE_KEY_JSON: $(LE_PRIVATE_KEY_JSON)
+              LE_REGR_JSON: $(LE_REGR_JSON)
             inputs:
               targetType: "inline"
               script: |
