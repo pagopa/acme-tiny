@@ -61,7 +61,7 @@ def azure_dns_operation(subscription, resource_group, zone, domain, value, opera
             "TXT",
             {
                 "ttl": DEFAULT_DNS_TTL_SEC,
-                "records": [{"value": value}]
+                "txt_records": [{"value": value}]
             }
         )
         log.info("TXT record updated!")
