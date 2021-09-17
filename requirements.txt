@@ -1,6 +1,12 @@
-jwcrypto==0.8 --hash=sha256:16e17faa4dce36551ade3a3ccb06236a61e5924ea1db163c9be9827acf935a82
-cryptography==3.4.7 --hash=sha256:1e056c28420c072c5e3cb36e2b23ee55e260cb04eee08f702e0edfec3fb51959
-cffi==1.14.5 --hash=sha256:6c97d7350133666fbb5cf4abdc1178c812cb205dc6f41d174a7b0f18fb93337e
-pycparser==2.20 --hash=sha256:7582ad22678f0fcd81102833f60ef8d0e57288b6b5fb00323d101be910e35705
-azure-mgmt-dns==8.0.0 --hash=sha256:eb8b988501495ffc785603890e62e4d21dba42ff3a910d7f779f2c55571550f5
-azure-identity==1.6.0 --hash=sha256:87f63bf1f3f10b67a3e6689f06d0cf6cacdcd8e375c6da12ea71c111cfe58457
+jwcrypto==0.8
+cryptography==3.4.7
+cffi==1.14.5
+pycparser==2.20
+azure-mgmt-dns==8.0.0
+azure-identity==1.6.0
+msrest == 0.6.21
+azure-common == 1.1.27
+azure-mgmt-core == 1.3.0
+msal == 1.14.0
+azure-core == 1.18.0
+msal-extensions == 0.3.0
