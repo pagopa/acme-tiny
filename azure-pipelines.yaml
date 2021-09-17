@@ -22,7 +22,8 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                if [[ "$(FORCE_RENEW_CERT)" = true ]]
+                echo $FORCE_RENEW_CERT
+                if [[ "${FORCE_RENEW_CERT}" = true ]]
                 then
                   echo "force renew certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
