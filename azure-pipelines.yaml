@@ -21,7 +21,7 @@ stages:
         # condition: # if force renewal is false
         steps:
           - task: AzureCLI@2
-            name: CheckExpire
+            name: check_expire
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
@@ -70,7 +70,7 @@ stages:
           NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
           - script: pip3 install -r requirements.txt
-            name: requirements
+            name: install_requirements
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
           - task: PythonScript@0
             name: generate_csr
