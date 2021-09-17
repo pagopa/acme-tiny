@@ -89,6 +89,8 @@ stages:
               script: |
                 printf "%s\n" $LE_PRIVATE_KEY_JSON > private_key.json
                 printf "%s\n" $LE_REGR_JSON > regr.json
+                cat private_key.json
+                cat regr.json
           - task: PythonScript@0
             name: acme_tiny
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
