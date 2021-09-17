@@ -20,7 +20,6 @@ stages:
       - job: GetCertificateFromKV
         # condition: # if force renewal is false
         steps:
-          - script: env
           - task: AzureCLI@2
             name: CheckExpire
             inputs:
@@ -70,7 +69,6 @@ stages:
         variables:
           NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['CheckExpire.NEW_CERTIFICATE'] ]
         steps:
-          - script: env
           - script: pip3 install -r requirements.txt
             name: requirements
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
@@ -92,8 +90,6 @@ stages:
               script: |
                 printf "%s\n" $LE_PRIVATE_KEY_JSON > private_key.json
                 printf "%s\n" $LE_REGR_JSON > regr.json
-                cat private_key.json
-                cat regr.json
           - task: PythonScript@0
             name: acme_tiny
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
