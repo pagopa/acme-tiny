@@ -14,7 +14,6 @@ stages:
   - stage: GetCertificate
     jobs:
       - job: GetCertificateFromKV
-        # condition: # if force renewal is false
         steps:
           - task: AzureCLI@2
             name: check_expire
@@ -23,7 +22,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                if [ "${FORCE_RENEW_CERT}" = true ]
+                if [[ "$(FORCE_RENEW_CERT)" = true ]]
                 then
                   echo "force renew certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
