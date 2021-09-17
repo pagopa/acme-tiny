@@ -42,10 +42,9 @@ def azure_dns_operation(subscription, resource_group, zone, domain, value, opera
 
     # helper function - remove zone name from domain string
     def _get_name(domain, zone):
-        if domain.rfind(".{}".format(zone)) != -1:
-            domain = domain[:domain.rfind(".{}".format(zone))]
-        name = "_acme-challenge.{}".format(domain)
-        return name
+        if domain.endswith(zone):
+            domain = domain[:-len(zone)]
+        return "_acme-challenge.{}".format(domain)
 
     client = _get_dns_client(subscription)
     log.info("Azure DNS client initialized")
@@ -200,6 +199,18 @@ def get_crt(private_key, regr, csr, directory_url, out):
     domains = list(set().union(subject_alternative_names, common_name))
     log.info("Domains to validate: %s", ", ".join(domains))
 
+    # sanity check: dns zone domain should be a suffix of domain
+    # read zone from env variable, it has been checked earlier so it must exist
+    zone = os.environ["AZURE_DNS_ZONE"]
+    valid_domains = list(filter(lambda d: d.endswith(zone), domains))
+    if len(valid_domains) != len(domains):
+        raise ValueError(
+            "Domains do not belong to {} DNS zone: {}".format(
+                zone,
+                list(set(domains) - set(valid_domains))
+            ),
+        )
+
     log.info("Now using ACMEv2, getting the directory...")
     directory, _, _ = _do_request(
         directory_url, err_msg="Error getting directory")
@@ -232,7 +243,6 @@ def get_crt(private_key, regr, csr, directory_url, out):
         # those env variables must exist, as they have been checked earlier at startup
         subscription = os.environ["AZURE_SUBSCRIPTION_ID"]
         resource_group = os.environ["AZURE_DNS_ZONE_RESOURCE_GROUP"]
-        zone = os.environ["AZURE_DNS_ZONE"]
 
         # modify DNS record
         azure_dns_operation(subscription, resource_group,
