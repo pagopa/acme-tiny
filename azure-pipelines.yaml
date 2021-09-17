@@ -49,11 +49,11 @@ stages:
                   if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in certificate.pem
                   then
                     rm -f certificate.pem
-                    echo "expire date is greater then CERT_NAME_EXPIRE_SECONDS"
+                    echo "expire date is greater then $CERT_NAME_EXPIRE_SECONDS"
                     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
                   else
                     rm -f certificate.pem
-                    echo "expire date is less then CERT_NAME_EXPIRE_SECONDS, , create new certificate"
+                    echo "expire date is less then $CERT_NAME_EXPIRE_SECONDS, , create new certificate"
                     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                   fi
                 else
