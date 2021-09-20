@@ -282,7 +282,12 @@ def get_crt(private_key, regr, csr, directory_url, out):
     log.info("Certificate bundle saved to %s", out)
 
     # attempt to cleanup DNS records
-    # TODO
+    for domain in domains:
+        try:
+            azure_dns_operation(subscription, resource_group,
+                                zone, domain, txt_record_value, "delete")
+        except Exception:
+            continue  # ignore failures here
 
 
 def main(argv=None):
