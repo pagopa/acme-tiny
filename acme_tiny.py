@@ -11,11 +11,10 @@ import re
 import sys
 import textwrap
 import time
-from urllib.request import Request, urlopen
+import urllib.request
 
 import azure.identity
 import azure.mgmt.dns
-from azure.mgmt.dns.models import TxtRecord
 import cryptography
 import jwcrypto.jwk
 
@@ -91,14 +90,14 @@ def get_crt(private_key, regr, csr, directory_url, out):
 
     # helper function - make request and automatically parse json response
     def _do_request(url, data=None, err_msg="Error", depth=0):
-        req = Request(
+        req = urllib.request.Request(
             url, data=data, headers={
                 "Content-Type": "application/jose+json", "User-Agent": "acme-tiny"}
         )
         if req.type != "https":
             raise ValueError("{}:\nUrl: {}".format("Disallowed schema", url))
         try:
-            resp = urlopen(req)
+            resp = urllib.request.urlopen(req)
             resp_data, code, headers = resp.read().decode(
                 "utf8"), resp.getcode(), resp.headers
         except IOError as e:
