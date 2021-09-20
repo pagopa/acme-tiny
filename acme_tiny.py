@@ -284,7 +284,8 @@ def get_crt(private_key, regr, csr, directory_url, out):
         try:
             azure_dns_operation(subscription, resource_group,
                                 zone, domain, txt_record_value, "delete")
-        except Exception:
+        except Exception as ex:
+            log.info("Exception \"%s\" when cleaning up TXT record on %s, skipping this record", str(ex))
             continue  # ignore failures here
 
 
