@@ -93,7 +93,7 @@ stages:
               arguments: --env-name LE_PRIVATE_KEY_JSON --out private_key.json
 
           - task: PythonScript@0
-            name: RegristationToFile
+            name: RegistrationToFile
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             env:
               LE_REGR_JSON: $(LE_REGR_JSON)
