@@ -19,8 +19,7 @@ from azure.mgmt.dns.models import TxtRecord
 import cryptography
 import jwcrypto.jwk
 
-# FIXME do not use staging in final release of code
-DEFAULT_DIRECTORY_URL = "https://acme-staging-v02.api.letsencrypt.org/directory"
+DEFAULT_DIRECTORY_URL = "https://acme-v02.api.letsencrypt.org/directory"
 DEFAULT_DNS_TTL_SEC = 300
 
 LOGGER = logging.getLogger(__name__)
