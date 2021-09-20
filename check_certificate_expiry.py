@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import datetime
@@ -28,15 +28,15 @@ def check_timedelta(certificate, delta):
     log.info("The certificate is not valid after %s", str(nva))
 
     # is the cert expiring before the time delta?
-    expired = (datetime.datetime.now() + datetime.timedelta(hours=delta) > nva)
+    expired = (datetime.datetime.now() + datetime.timedelta(seconds=delta) > nva)
     if expired:
         log.info(
-            "The certificate is expiring before the chosen time delta (%sh)", delta)
+            "The certificate is expiring before the chosen time delta (%ss)", delta)
         # return a 1 status code so that shells can interpret the result
         sys.exit(1)
     else:
         log.info(
-            "The certificate is not expiring before the chosen time delta (%sh)", delta)
+            "The certificate is not expiring before the chosen time delta (%ss)", delta)
         # all good
         sys.exit(0)
 
@@ -49,13 +49,13 @@ def main(argv=None):
             Status code is 1 in case of exception or an expiring certificate.
 
             Example Usage:
-            python3 check_certificate_expiry.py --certificate certificate.pem --delta 720
+            python3 check_certificate_expiry.py --certificate certificate.pem --delta 3600
             """)
     )
     parser.add_argument("--certificate", required=True,
                         help="Path to the x509 certificate to check")
     parser.add_argument("--delta", default=720, type=int,
-                        help="Positive time delta in hours (720h -> 30d)")
+                        help="Positive time delta in seconds (3600 -> 1h)")
     parser.add_argument("--quiet", action="store_const",
                         const=logging.ERROR, help="Suppress output except for errors")
 
