@@ -14,10 +14,11 @@ stages:
   - stage: GetCertificate
     jobs:
       - job: GetCertificateFromKV
-        # condition: # if force renewal is false
         steps:
           - task: AzureCLI@2
             name: check_expire
+            env:
+              FORCE_RENEW_CERT: ${{ parameters.FORCE_RENEW_CERT }}
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
@@ -29,33 +30,32 @@ stages:
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                   exit 0
                 fi
-
+                
                 echo "get certificate from keyvault"
                 RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f certificate.pem)
                 if [ $? -eq 0 ]
                 then
                   echo "certificate found, test expire date"
+                  if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in certificate.pem
+                  then
+                    echo "expire date is greater then $CERT_NAME_EXPIRE_SECONDS seconds, skip new certificate"
+                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
+                  else
+                    echo "expire date is less then $CERT_NAME_EXPIRE_SECONDS seconds, create new certificate"
+                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+                  fi
                 else
                   echo "certificate not found, create new certificate"
                   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
                 fi
+          - task: Bash@3
+            name: clean_up
+            condition: succeededOrFailed()
+            inputs:
+              targetType: "inline"
+              script: |
+                rm -f certificate.pem
 
-                # if [ $? -eq 0 ]
-                # then
-                #   echo "certificate found, test expire date"
-                #   if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in cert.pem
-                #   then
-                #     echo "expire date is greater then CERT_NAME_EXPIRE_SECONDS"
-                #     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
-                #   else
-                #     echo "expire date is less then CERT_NAME_EXPIRE_SECONDS, , create new certificate"
-                #     echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                #   fi
-                # else
-                #   echo "certificate not found, create new certificate"
-                #   echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                # fi
-                # Python to return if expired on timedelta variable
       - job: GetCertificateFromLE
         condition: succeeded()
         dependsOn: GetCertificateFromKV
@@ -103,17 +103,23 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem
-      - job: CleanUp
-        dependsOn: GetCertificateFromLE
-        condition: succeededOrFailed()
-        steps:
+                openssl pkcs8 -topk8 -in csr.key -out keynew.pem -nocrypt
+                cat keynew.pem >> certificate_chain.pem
+                RESULT=$(az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem)
+                if [ $? -eq 0 ]
+                then
+                  echo "certificate imported"
+                  exit 0
+                else
+                  echo "error certificate not imported"
+                  exit 1
+                fi
           - task: Bash@3
             name: clean_up
+            condition: succeededOrFailed()
             inputs:
               targetType: "inline"
               script: |
-                cat certificate_chain.pem
                 rm -f private_key.json
                 rm -f regr.json
                 rm -f certificate_chain.pem
