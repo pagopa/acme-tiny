@@ -3,20 +3,22 @@ pool:
 
 parameters:
   - name: 'FORCE_RENEW_CERT'
-    displayName: 'force certificate to be renewed'
+    displayName: 'Force the existing certificate to be renewed anyway'
     type: boolean
-    default: False
+    default: "False"
     values:
-      - False
-      - True
+      - "False"
+      - "True"
 
 stages:
-  - stage: GetCertificate
+  - stage: SignCertificate
     jobs:
-      - job: GetCertificateFromKV
+
+      - job: RenewalDecision
         steps:
+
           - task: AzureCLI@2
-            name: check_expire
+            name: GetCertificateFromKeyVault
             env:
               FORCE_RENEW_CERT: ${{ parameters.FORCE_RENEW_CERT }}
             inputs:
@@ -32,25 +34,31 @@ stages:
                 fi
                 
                 echo "get certificate from keyvault"
-                RESULT=$(az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f certificate.pem)
-                if [ $? -eq 0 ]
-                then
-                  echo "certificate found, test expire date"
-                  if openssl x509 -checkend $(CERT_NAME_EXPIRE_SECONDS) -noout -in certificate.pem
-                  then
-                    echo "expire date is greater then $CERT_NAME_EXPIRE_SECONDS seconds, skip new certificate"
-                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
-                  else
-                    echo "expire date is less then $CERT_NAME_EXPIRE_SECONDS seconds, create new certificate"
-                    echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                  fi
-                else
-                  echo "certificate not found, create new certificate"
-                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-                fi
+                az keyvault certificate download --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) -f certificate.pem
+
+          - script: pip3 install --require-hashes --requirement requirements.txt
+            name: InstallPythonDependencies
+            condition: succeeded()
+
+          - task: PythonScript@0
+            name: CheckCertificateExpiration
+            condition: succeeded()
+            inputs:
+              scriptSource: filePath
+              scriptPath: check_certificate_expiry.py
+              arguments: --certificate certificate.pem --delta $(CERT_NAME_EXPIRE_SECONDS)
+
+          - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+            condition: failed()
+            name: SetVariableOnFailure
+
+          - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
+            condition: succeeded()
+            name: SetVariableOnSuccess
+
           - task: Bash@3
-            name: clean_up
-            condition: succeededOrFailed()
+            name: CleanupRenewalDecision
+            condition: always()
             inputs:
               targetType: "inline"
               script: |
@@ -58,33 +66,44 @@ stages:
 
       - job: GetCertificateFromLE
         condition: succeeded()
-        dependsOn: GetCertificateFromKV
+        dependsOn: RenewalDecision
         variables:
-          NEW_CERTIFICATE: $[ dependencies.GetCertificateFromKV.outputs['check_expire.NEW_CERTIFICATE'] ]
+          NEW_CERTIFICATE: $[ dependencies.RenewalDecision.outputs['GetCertificateFromKeyVault.NEW_CERTIFICATE'] ]
         steps:
-          - script: pip3 install --require-hashes -r requirements.txt
-            name: install_requirements
+          - script: pip3 install --require-hashes --requirement requirements.txt
+            name: InstallPythonDependencies
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+
           - task: PythonScript@0
-            name: generate_csr
+            name: GenerateCertificateSigningRequest
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               scriptSource: filePath
               scriptPath: generate_csr.py
               arguments: --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
-          - task: Bash@3
-            name: save_keys_to_file
+
+          - task: PythonScript@0
+            name: PrivateKeyToFile
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             env:
               LE_PRIVATE_KEY_JSON: $(LE_PRIVATE_KEY_JSON)
+            inputs:
+              scriptSource: filePath
+              scriptPath: env_to_file.py
+              arguments: --env-name LE_PRIVATE_KEY_JSON --out private_key.json
+
+          - task: PythonScript@0
+            name: RegristationToFile
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+            env:
               LE_REGR_JSON: $(LE_REGR_JSON)
             inputs:
-              targetType: "inline"
-              script: |
-                printf "%s\n" $LE_PRIVATE_KEY_JSON > private_key.json
-                printf "%s\n" $LE_REGR_JSON > regr.json
+              scriptSource: filePath
+              scriptPath: env_to_file.py
+              arguments: --env-name LE_REGR_JSON --out regr.json
+
           - task: PythonScript@0
-            name: acme_tiny
+            name: ACMEv2
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             env:
               AZURE_TENANT_ID: $(LE_AZURE_TENANT_ID)
@@ -95,8 +114,9 @@ stages:
               scriptSource: filePath
               scriptPath: acme_tiny.py
               arguments: --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem --directory-url https://acme-staging-v02.api.letsencrypt.org/directory
+
           - task: AzureCLI@2
-            name: save_cert_keyvault
+            name: SaveCertificateInKeyVault
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
@@ -113,12 +133,15 @@ stages:
                   echo "error certificate not imported"
                   exit 1
                 fi
+
           - task: Bash@3
-            name: clean_up
-            condition: succeededOrFailed()
+            name: CleanupEverything
+            condition: always()
             inputs:
               targetType: "inline"
               script: |
                 rm -f private_key.json
                 rm -f regr.json
+                rm -f csr.der
+                rm -f csr.key
                 rm -f certificate_chain.pem
