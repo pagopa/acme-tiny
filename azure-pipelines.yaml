@@ -103,8 +103,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                openssl pkcs8 -topk8 -in csr.key -out keynew.pem -nocrypt
-                cat keynew.pem >> certificate_chain.pem
+                cat csr.key >> certificate_chain.pem
                 RESULT=$(az keyvault certificate import --vault-name $(KEY_VAULT_NAME) -n $(KEY_VAULT_CERT_NAME) --disabled false -f certificate_chain.pem)
                 if [ $? -eq 0 ]
                 then

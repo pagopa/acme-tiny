@@ -30,7 +30,7 @@ def get_csr(common_name, out, keyout, rsa_key_size):
         f.write(
             private_key.private_bytes(
                 encoding=cryptography.hazmat.primitives.serialization.Encoding.PEM,
-                format=cryptography.hazmat.primitives.serialization.PrivateFormat.TraditionalOpenSSL,
+                format=cryptography.hazmat.primitives.serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=cryptography.hazmat.primitives.serialization.NoEncryption()
             )
         )
