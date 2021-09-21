@@ -17,6 +17,8 @@ stages:
       - job: RenewalDecision
         steps:
 
+          - script: findmount
+
           - task: AzureCLI@2
             name: GetCertificateFromKeyVaultAndDecide
             inputs:
