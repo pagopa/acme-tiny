@@ -87,7 +87,7 @@ stages:
             inputs:
               scriptSource: filePath
               scriptPath: acme_tiny.py
-              arguments: --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem --directory-url https://acme-staging-v02.api.letsencrypt.org/directory
+              arguments: --private-key private_key.json --regr regr.json --csr csr.der --out certificate_chain.pem
 
           - task: AzureCLI@2
             name: SaveCertificateInKeyVault
