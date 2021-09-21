@@ -13,7 +13,7 @@ LOGGER.addHandler(logging.StreamHandler())
 LOGGER.setLevel(logging.INFO)
 
 
-def check_timedelta(certificate, delta):
+def check_timedelta(certificate, delta, azure_pipeline):
 
     log = LOGGER
 
@@ -32,13 +32,13 @@ def check_timedelta(certificate, delta):
     if expired:
         log.info(
             "The certificate is expiring before the chosen time delta (%ss)", delta)
-        # return a 1 status code so that shells can interpret the result
-        sys.exit(1)
+        if azure_pipeline:
+            log.info("##vso[task.setvariable variable=certificate_expired;isOutput=true]%s", str(True))
     else:
         log.info(
             "The certificate is not expiring before the chosen time delta (%ss)", delta)
-        # all good
-        sys.exit(0)
+        if azure_pipeline:
+            log.info("##vso[task.setvariable variable=certificate_expired;isOutput=true]%s", str(False))
 
 
 def main(argv=None):
@@ -58,10 +58,12 @@ def main(argv=None):
                         help="Positive time delta in seconds (3600 -> 1h)")
     parser.add_argument("--quiet", action="store_const",
                         const=logging.ERROR, help="Suppress output except for errors")
+    parser.add_argument("--azure-pipeline", action="store_const",
+                        const=True, help="Use a Task Output Variable to return expiring info")
 
     args = parser.parse_args(argv)
     LOGGER.setLevel(args.quiet or LOGGER.level)
-    check_timedelta(args.certificate, args.delta)
+    check_timedelta(args.certificate, args.delta, args.azure_pipeline)
 
 
 if __name__ == "__main__":
