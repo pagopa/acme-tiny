@@ -37,7 +37,7 @@ stages:
             inputs:
               scriptSource: filePath
               scriptPath: check_certificate_expiry.py
-              arguments: --certificate certificate.pem --delta $(CERT_NAME_EXPIRE_SECONDS)
+              arguments: --certificate certificate.pem --delta $(CERT_NAME_EXPIRE_SECONDS) --azure-pipeline
 
           - script: rm -f certificate.pem
             name: CleanupRenewalDecision
@@ -45,7 +45,7 @@ stages:
 
           - script: echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
             name: CheckIfNewCertificateIsAlwaysRequired
-            condition: or(failed(), eq(${{parameters.force_renew_cert}}, True))
+            condition: eq(${{parameters.force_renew_cert}}, True)
 
       - job: GetCertificateFromLE
         dependsOn: RenewalDecision
