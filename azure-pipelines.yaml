@@ -17,26 +17,25 @@ stages:
       - job: RenewalDecision
         steps:
 
-          - task: AzureKeyVault@2
+          - task: AzureCLI@2
             name: GetCertificateFromKeyVault
+            env:
+              FORCE_RENEW_CERT: ${{ parameters.FORCE_RENEW_CERT }}
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
-              KeyVaultName: $(KEY_VAULT_NAME)
-              SecretsFilter: $(KEY_VAULT_CERT_NAME)
-              RunAsPreJob: false
-
-          - task: PythonScript@0
-            name: CertificateToFile
-            condition: succeeded()
-            env:
-              CURRENT_CERT: $($(KEY_VAULT_CERT_NAME))
-            inputs:
-              scriptSource: filePath
-              scriptPath: env_to_file.py
-              arguments: --env-name CURRENT_CERT --out certificate.pem
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                if [ "${FORCE_RENEW_CERT}" = True ]
+                then
+                  echo "force renew certificate"
+                  echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+                  exit 0
+                fi
+                az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
 
           - script: cat certificate.pem
-            condition: succeeded()
+            condition: succeededOrFailed()
             name: DebugCertificateParsing
 
           - script: pip3 install --require-hashes --requirement requirements.txt
@@ -53,10 +52,12 @@ stages:
 
           - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
             condition: failed()
+            dependsOn: CheckCertificateExpiration
             name: SetVariableOnFailure
 
           - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
             condition: succeeded()
+            dependsOn: CheckCertificateExpiration
             name: SetVariableOnSuccess
 
           - task: Bash@3
