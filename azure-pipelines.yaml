@@ -49,6 +49,7 @@ stages:
 
       - job: GetCertificateFromLE
         dependsOn: RenewalDecision
+        condition: succeededOrFailed()
         variables:
           require_new_certificate: $[ dependencies.RenewalDecision.outputs['CheckIfNewCertificateIsAlwaysRequired.require_new_certificate'] ]
 
