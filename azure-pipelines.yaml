@@ -24,6 +24,11 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                if [ ${{ parameters.force_renew_cert }} == "True" ]
+                then
+                  echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+                  exit 0
+                fi
                 if ! az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
                 then
                   echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
@@ -35,7 +40,6 @@ stages:
                     echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
                   fi
                 fi
-            condition: eq(${{parameters.force_renew_cert}}, False)
 
           - script: rm -f certificate.pem
             name: CleanupRenewalDecision
