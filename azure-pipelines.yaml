@@ -33,7 +33,7 @@ stages:
             inputs:
               scriptSource: filePath
               scriptPath: env_to_file.py
-              arguments: --env-name CURRENT_CERT --out certificate.pem
+              arguments: --env-name CURRENT_CERT --out certificate.pem --base64
 
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
