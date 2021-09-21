@@ -98,12 +98,12 @@ stages:
               inlineScript: |
                 cat csr.key >> certificate_chain.pem
                 az keyvault certificate import --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' --disabled false -f certificate_chain.pem
-
-          - script: echo "Failed to import the certificate in the Azure KeyVault"
-            condition: failed()
-
-          - script: echo "Certificate was correctly imported in the Azure KeyVault"
-            condition: succeeded()
+                if [ $? -eq 0 ]
+                then
+                  echo "Certificate was correctly imported in the Azure KeyVault"
+                else
+                  echo "Failed to import the certificate in the Azure KeyVault"
+                fi
 
           - task: Bash@3
             name: CleanupEverything
