@@ -25,6 +25,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem >/dev/null
+                echo "##vso[task.setvariable variable=certificate_not_found;isOutput=true]True"
             condition: eq(${{parameters.force_renew_cert}}, False)
 
           - script: pip3 install --require-hashes --requirement requirements.txt
@@ -44,6 +45,10 @@ stages:
             condition: and(succeededOrFailed(), eq(${{parameters.force_renew_cert}}, False))
 
           - script: |
+              if [ "$(certificate_not_found)" == "True" ]
+              then
+                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+              fi
               if [ "$(certificate_expired)" == "True" ]
               then
                 echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
@@ -53,6 +58,7 @@ stages:
                 echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
               fi
             name: CheckIfNewCertificateIsRequired
+            condition: succeededOrFailed()
 
       - job: GetCertificateFromLE
         dependsOn: RenewalDecision
