@@ -33,11 +33,11 @@ stages:
 
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
-            condition: and(succeeded(), eq(${{parameters.force_renew_cert}}, False))
+            condition: and(succeeded(), eq(${{parameters.force_renew_cert}}, False), eq($(certificate_not_found), False))
 
           - task: PythonScript@0
             name: CheckCertificateExpiration
-            condition: and(succeeded(), eq(${{parameters.force_renew_cert}}, False))
+            condition: and(succeeded(), eq(${{parameters.force_renew_cert}}, False), eq($(certificate_not_found), False))
             inputs:
               scriptSource: filePath
               scriptPath: check_certificate_expiry.py
@@ -45,7 +45,7 @@ stages:
 
           - script: rm -f certificate.pem
             name: CleanupRenewalDecision
-            condition: and(succeededOrFailed(), eq(${{parameters.force_renew_cert}}, False))
+            condition: and(eq(${{parameters.force_renew_cert}}, False), eq($(certificate_not_found), False))
 
           - script: |
               if [ "$(certificate_not_found)" == "True" ]
