@@ -43,15 +43,23 @@ stages:
             name: CleanupRenewalDecision
             condition: and(succeededOrFailed(), eq(${{parameters.force_renew_cert}}, False))
 
-          - script: echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
-            name: CheckIfNewCertificateIsAlwaysRequired
-            condition: eq(${{parameters.force_renew_cert}}, True)
+          - script: |
+              if [ $(CheckCertificateExpiration.certificate_expired) == "True" ]
+              then
+                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+              fi
+              if [ "${{parameters.force_renew_cert}}" == "True" ]
+              then
+                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+              fi
+            name: CheckIfNewCertificateIsRequired
+            condition: succeededOrFailed()
 
       - job: GetCertificateFromLE
         dependsOn: RenewalDecision
         condition: succeededOrFailed()
         variables:
-          require_new_certificate: $[ dependencies.RenewalDecision.outputs['CheckIfNewCertificateIsAlwaysRequired.require_new_certificate'] ]
+          require_new_certificate: $[ dependencies.RenewalDecision.outputs['CheckIfNewCertificateIsRequired.require_new_certificate'] ]
 
         steps:
 
