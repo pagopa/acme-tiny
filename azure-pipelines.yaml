@@ -28,10 +28,12 @@ stages:
           - task: PythonScript@0
             name: CertificateToFile
             condition: succeeded()
+            env:
+              CURRENT_CERT: $(KEY_VAULT_CERT_NAME)
             inputs:
               scriptSource: filePath
               scriptPath: env_to_file.py
-              arguments: --env-name $(KEY_VAULT_CERT_NAME) --out certificate.pem
+              arguments: --env-name CURRENT_CERT --out certificate.pem
 
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
