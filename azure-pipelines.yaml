@@ -18,57 +18,34 @@ stages:
         steps:
 
           - task: AzureCLI@2
-            name: GetCertificateFromKeyVault
+            name: GetCertificateFromKeyVaultAndDecide
             inputs:
-              azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
+              azureSubscription: '$(KEY_VAULT_SERVICE_CONNECTION)'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
-                if [ $? -ne 0 ]
+              if ! az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
+              then
+                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+                exit 0
+              else
+                if ! openssl x509 -checkend '$(CERT_NAME_EXPIRE_SECONDS)' -noout -in certificate.pem >/dev/null 2>&1
                 then
-                  echo "##vso[task.setvariable variable=certificate_not_found;isOutput=true]True"
+                  # certificate is expiring or is already expired
+                  echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
                 fi
+              fi
             condition: eq(${{parameters.force_renew_cert}}, False)
-
-          - script: pip3 install --require-hashes --requirement requirements.txt
-            name: InstallPythonDependencies
-            condition: and(and(succeeded(), eq(${{parameters.force_renew_cert}}, False)), eq($(certificate_not_found), False))
-
-          - task: PythonScript@0
-            name: CheckCertificateExpiration
-            condition: and(and(succeeded(), eq(${{parameters.force_renew_cert}}, False)), eq($(certificate_not_found), False))
-            inputs:
-              scriptSource: filePath
-              scriptPath: check_certificate_expiry.py
-              arguments: --certificate certificate.pem --delta $(CERT_NAME_EXPIRE_SECONDS) --azure-pipeline
 
           - script: rm -f certificate.pem
             name: CleanupRenewalDecision
-            condition: and(eq(${{parameters.force_renew_cert}}, False), eq($(certificate_not_found), False))
-
-          - script: |
-              if [ "$(certificate_not_found)" == "True" ]
-              then
-                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
-              fi
-              if [ "$(certificate_expired)" == "True" ]
-              then
-                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
-              fi
-              if [ "${{parameters.force_renew_cert}}" == "True" ]
-              then
-                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
-              fi
-            name: CheckIfNewCertificateIsRequired
-            condition: succeededOrFailed()
+            condition: eq(${{parameters.force_renew_cert}}, False)
 
       - job: GetCertificateFromLE
         dependsOn: RenewalDecision
         condition: succeededOrFailed()
         variables:
-          require_new_certificate: $[ dependencies.RenewalDecision.outputs['CheckIfNewCertificateIsRequired.require_new_certificate'] ]
-
+          require_new_certificate: $[ dependencies.RenewalDecision.outputs['GetCertificateFromKeyVaultAndDecide.require_new_certificate'] ]
         steps:
 
           - script: pip3 install --require-hashes --requirement requirements.txt
@@ -114,8 +91,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 cat csr.key >> certificate_chain.pem
-                az keyvault certificate import --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' --disabled false -f certificate_chain.pem
-                if [ $? -eq 0 ]
+                if az keyvault certificate import --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' --disabled false -f certificate_chain.pem
                 then
                   echo "Certificate was correctly imported in the Azure KeyVault"
                 else
