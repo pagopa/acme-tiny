@@ -24,17 +24,17 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-              if ! az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
-              then
-                echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
-                exit 0
-              else
-                if ! openssl x509 -checkend '$(CERT_NAME_EXPIRE_SECONDS)' -noout -in certificate.pem >/dev/null 2>&1
+                if ! az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
                 then
-                  # certificate is expiring or is already expired
                   echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+                  exit 0
+                else
+                  if ! openssl x509 -checkend '$(CERT_NAME_EXPIRE_SECONDS)' -noout -in certificate.pem >/dev/null 2>&1
+                  then
+                    # certificate is expiring or is already expired
+                    echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+                  fi
                 fi
-              fi
             condition: eq(${{parameters.force_renew_cert}}, False)
 
           - script: rm -f certificate.pem
