@@ -61,6 +61,7 @@ stages:
         variables:
           NEW_CERTIFICATE: $[ dependencies.RenewalDecision.outputs['GetCertificateFromKeyVault.NEW_CERTIFICATE'] ]
         steps:
+
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
             condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, True))
@@ -74,13 +75,13 @@ stages:
               arguments: --common-name $(csr_common_name) --out csr.der --rsa-key-size 2048
 
           - task: Bash@3
-              name: KeysToFile
-              condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
-              inputs:
-                targetType: "inline"
-                script: |
-                  printf "%s\n" '$(LE_PRIVATE_KEY_JSON)' > private_key.json
-                  printf "%s\n" '$(LE_REGR_JSON)' > regr.json
+            name: KeysToFile
+            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+            inputs:
+              targetType: "inline"
+              script: |
+                printf "%s\n" '$(LE_PRIVATE_KEY_JSON)' > private_key.json
+                printf "%s\n" '$(LE_REGR_JSON)' > regr.json
 
           - task: PythonScript@0
             name: ACMEv2
