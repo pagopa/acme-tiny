@@ -44,7 +44,7 @@ stages:
             condition: and(succeededOrFailed(), eq(${{parameters.force_renew_cert}}, False))
 
           - script: |
-              if [ ${{CheckCertificateExpiration.certificate_expired}} == "True" ]
+              if [ $[CheckCertificateExpiration.certificate_expired] == "True" ]
               then
                 echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
               fi
