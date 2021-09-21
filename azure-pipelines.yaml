@@ -2,7 +2,7 @@ pool:
   vmImage: "ubuntu-20.04"
 
 parameters:
-  - name: 'FORCE_RENEW_CERT'
+  - name: 'force_renew_cert'
     displayName: 'Force the existing certificate to be renewed anyway'
     type: boolean
     default: False
@@ -17,9 +17,9 @@ stages:
       - job: RenewalDecision
         steps:
 
-          - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
+          - script: echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
             name: CheckIfNewCertificateIsAlwaysRequired
-            condition: eq(parameters.FORCE_RENEW_CERT, True)
+            condition: eq('$(parameters.force_renew_cert)', True)
 
           - task: AzureCLI@2
             name: GetCertificateFromKeyVault
@@ -29,46 +29,46 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 az keyvault certificate download --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' -f certificate.pem
-            condition: eq(parameters.FORCE_RENEW_CERT, False)
+            condition: eq('$(parameters.force_renew_cert)', False)
 
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
-            condition: and(succeeded(), eq(parameters.FORCE_RENEW_CERT, False))
+            condition: and(succeeded(), eq('$(parameters.force_renew_cert)', False))
 
           - task: PythonScript@0
             name: CheckCertificateExpiration
-            condition: and(succeeded(), eq(parameters.FORCE_RENEW_CERT, False))
+            condition: and(succeeded(), eq('$(parameters.force_renew_cert)', False))
             inputs:
               scriptSource: filePath
               scriptPath: check_certificate_expiry.py
               arguments: --certificate certificate.pem --delta $(CERT_NAME_EXPIRE_SECONDS)
 
-          - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
-            condition: and(failed(), eq(parameters.FORCE_RENEW_CERT, False))
+          - script: echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
+            condition: and(failed(), eq('$(parameters.force_renew_cert)', False))
             name: SetVariableOnFailure
 
-          - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
-            condition: and(succeeded(), eq(parameters.FORCE_RENEW_CERT, False))
+          - script: echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]False"
+            condition: and(succeeded(), eq('$(parameters.force_renew_cert)', False))
             name: SetVariableOnSuccess
 
           - script: rm -f certificate.pem
             name: CleanupRenewalDecision
-            condition: and(succededOrFailed(), eq(parameters.FORCE_RENEW_CERT, False))
+            condition: and(succededOrFailed(), eq('$(parameters.force_renew_cert)', False))
 
       - job: GetCertificateFromLE
         condition: succeeded()
         dependsOn: RenewalDecision
         variables:
-          NEW_CERTIFICATE: $[ dependencies.RenewalDecision.outputs['GetCertificateFromKeyVault.NEW_CERTIFICATE'] ]
+          require_new_certificate: $[ dependencies.RenewalDecision.outputs['GetCertificateFromKeyVault.require_new_certificate'] ]
         steps:
 
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
-            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, True))
+            condition: and(succeeded(), eq(variables.require_new_certificate, True))
 
           - task: PythonScript@0
             name: GenerateCertificateSigningRequest
-            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, True))
+            condition: and(succeeded(), eq(variables.require_new_certificate, True))
             inputs:
               scriptSource: filePath
               scriptPath: generate_csr.py
@@ -76,7 +76,7 @@ stages:
 
           - task: Bash@3
             name: KeysToFile
-            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, true))
+            condition: and(succeeded(), eq(variables.require_new_certificate, true))
             inputs:
               targetType: "inline"
               script: |
@@ -85,7 +85,7 @@ stages:
 
           - task: PythonScript@0
             name: ACMEv2
-            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, True))
+            condition: and(succeeded(), eq(variables.require_new_certificate, True))
             env:
               AZURE_TENANT_ID: $(LE_AZURE_TENANT_ID)
               AZURE_SUBSCRIPTION_ID: $(LE_AZURE_SUBSCRIPTION_ID)
@@ -98,7 +98,7 @@ stages:
 
           - task: AzureCLI@2
             name: SaveCertificateInKeyVault
-            condition: and(succeeded(), eq(variables.NEW_CERTIFICATE, True))
+            condition: and(succeeded(), eq(variables.require_new_certificate, True))
             inputs:
               azureSubscription: $(KEY_VAULT_SERVICE_CONNECTION)
               scriptType: bash
