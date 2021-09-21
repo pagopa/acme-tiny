@@ -64,7 +64,7 @@ stages:
 
           - script: pip3 install --require-hashes --requirement requirements.txt
             name: InstallPythonDependencies
-            condition: and(succeeded(), eq('${{variables.require_new_certificate}}', True))
+            condition: and(succeeded(), eq(variables.require_new_certificate, True))
 
           - task: PythonScript@0
             name: GenerateCertificateSigningRequest
