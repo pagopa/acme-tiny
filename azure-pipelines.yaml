@@ -52,12 +52,10 @@ stages:
 
           - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]True"
             condition: failed()
-            dependsOn: CheckCertificateExpiration
             name: SetVariableOnFailure
 
           - script: echo "##vso[task.setvariable variable=NEW_CERTIFICATE;isOutput=true]False"
             condition: succeeded()
-            dependsOn: CheckCertificateExpiration
             name: SetVariableOnSuccess
 
           - task: Bash@3
