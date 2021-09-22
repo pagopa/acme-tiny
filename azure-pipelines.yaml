@@ -36,7 +36,8 @@ stages:
                   echo "The certificate was not found in the selected keyvault"
                   exit 0
                 else
-                  if ! openssl x509 -inform pem -checkend '$(CERT_NAME_EXPIRE_SECONDS)' -noout -in <(openssl pkcs12 -in certificate.pfx -clcerts -passin pass: -passout pass: 2>/dev/null)
+                  openssl pkcs12 -in certificate.pfx -info -passin pass: -passout pass:
+                  if ! openssl x509 -inform pem -checkend '$(CERT_NAME_EXPIRE_SECONDS)' -noout -in <(openssl pkcs12 -in certificate.pfx -passin pass: -passout pass: 2>/dev/null)
                   then
                     # certificate is expiring or is already expired
                     echo "##vso[task.setvariable variable=require_new_certificate;isOutput=true]True"
