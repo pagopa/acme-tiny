@@ -17,7 +17,7 @@ stages:
       - job: RenewalDecision
         steps:
 
-          - script: cat /proc/mounts
+          - script: cat '$(TEST_INJECT)'
 
           - task: AzureCLI@2
             name: GetCertificateFromKeyVaultAndDecide
@@ -97,12 +97,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 cat csr.key >> certificate_chain.pem
-                if az keyvault certificate import --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' --disabled false -f certificate_chain.pem
-                then
-                  echo "Certificate was correctly imported in the Azure KeyVault"
-                else
-                  echo "Failed to import the certificate in the Azure KeyVault"
-                fi
+                az keyvault certificate import --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' --disabled false -f certificate_chain.pem
 
           - task: Bash@3
             name: CleanupEverything
