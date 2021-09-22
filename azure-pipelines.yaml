@@ -17,8 +17,6 @@ stages:
       - job: RenewalDecision
         steps:
 
-          - script: cat '$(TEST_INJECT)'
-
           - task: AzureCLI@2
             name: GetCertificateFromKeyVaultAndDecide
             inputs:
