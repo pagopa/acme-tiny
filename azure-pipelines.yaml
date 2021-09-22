@@ -94,7 +94,7 @@ stages:
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                openssl pkcs12 -inkey csr.key -in certificate_chain.pem -export -nodes -out certificate_chain.pfx
+                openssl pkcs12 -inkey csr.key -in certificate_chain.pem -export -passout pass: -nodes -out certificate_chain.pfx
                 az keyvault certificate import --vault-name '$(KEY_VAULT_NAME)' -n '$(KEY_VAULT_CERT_NAME)' --disabled false -f certificate_chain.pfx --password ""
 
           - task: Bash@3
